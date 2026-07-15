@@ -1,0 +1,238 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: #F8FAFC;
+  --foreground: #1e293b;
+  --card: #ffffff;
+  --card-foreground: #1e293b;
+  --popover: #ffffff;
+  --popover-foreground: #1e293b;
+  --primary: #1e3a5f;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f5f9;
+  --secondary-foreground: #1e293b;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --accent: #4f46e5;
+  --accent-foreground: #ffffff;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #4f46e5;
+  --chart-1: #4f46e5;
+  --chart-2: #10b981;
+  --chart-3: #f59e0b;
+  --chart-4: #ef4444;
+  --chart-5: #8b5cf6;
+  --radius: 0.625rem;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1e293b;
+  --sidebar-primary: #1e3a5f;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f1f5f9;
+  --sidebar-accent-foreground: #1e293b;
+  --sidebar-border: #e2e8f0;
+  --sidebar-ring: #4f46e5;
+  --success: #10b981;
+  --success-foreground: #ffffff;
+  --warning: #f59e0b;
+  --warning-foreground: #ffffff;
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.145 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.145 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.985 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.396 0.141 25.723);
+  --destructive-foreground: oklch(0.637 0.237 25.331);
+  --border: oklch(0.269 0 0);
+  --input: oklch(0.269 0 0);
+  --ring: oklch(0.439 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(0.269 0 0);
+  --sidebar-ring: oklch(0.439 0 0);
+}
+
+@theme inline {
+  --font-sans: Arial, Helvetica, system-ui, sans-serif;
+  --font-mono: 'Courier New', Courier, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+.resume-preview-highlight {
+  background: rgba(250, 204, 21, 0.38);
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.55);
+  border-radius: 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+@media print {
+  @page {
+    size: letter;
+    margin: 0;
+  }
+
+  body.printing-resume {
+    background: white !important;
+  }
+
+  body.printing-resume * {
+    visibility: hidden !important;
+  }
+
+  body.printing-resume .resume-print-root,
+  body.printing-resume .resume-print-root * {
+    visibility: visible !important;
+  }
+
+  body.printing-resume .resume-print-root {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 8.5in !important;
+    height: 11in !important;
+    max-width: none !important;
+    overflow: hidden !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: white !important;
+    margin: 0 !important;
+  }
+
+  body.printing-resume .resume-print-page {
+    width: 100% !important;
+    height: 11in !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+    background: white !important;
+    color: #111827 !important;
+    padding: 0.22in 0.32in !important;
+    font-size: 9.2px !important;
+    line-height: 1.22 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  body.printing-resume .resume-print-page h1 {
+    font-size: 18px !important;
+    line-height: 1.1 !important;
+    margin-bottom: 3px !important;
+  }
+
+  body.printing-resume .resume-print-page h2 {
+    font-size: 10px !important;
+    line-height: 1.1 !important;
+    padding-bottom: 2px !important;
+    margin-bottom: 4px !important;
+  }
+
+  body.printing-resume .resume-print-page h3,
+  body.printing-resume .resume-print-page p,
+  body.printing-resume .resume-print-page li,
+  body.printing-resume .resume-print-page span {
+    font-size: 8.3px !important;
+    line-height: 1.2 !important;
+  }
+
+  body.printing-resume .resume-print-page > div {
+    margin-bottom: 6px !important;
+  }
+
+  body.printing-resume .resume-print-page ul {
+    margin-top: 2px !important;
+    padding-left: 14px !important;
+  }
+
+  body.printing-resume .resume-print-page li {
+    margin-top: 1px !important;
+    margin-bottom: 1px !important;
+  }
+
+  body.printing-resume .resume-print-page .text-gray-700 {
+    color: #111827 !important;
+  }
+
+  body.printing-resume .resume-preview-highlight {
+    background: transparent !important;
+    box-shadow: none !important;
+    outline: none !important;
+  }
+
+  body.printing-resume .resume-print-page h1,
+  body.printing-resume .resume-print-page h2,
+  body.printing-resume .resume-print-page h3,
+  body.printing-resume .resume-print-page li,
+  body.printing-resume .resume-print-page > div {
+    page-break-inside: avoid !important;
+  }
+}
