@@ -1,7 +1,7 @@
 {
-  "name": "resume-ai",
+  "name": "loyola-law-resume-builder",
   "version": "0.1.0",
-  "description": "AI-powered resume tailoring app: paste a job description, get an ATS-optimized one-page resume with PDF/DOCX export.",
+  "description": "AI-powered resume tailoring app for Loyola Law School students: paste a job description, get an ATS-optimized one-page legal resume with PDF/DOCX export.",
   "private": true,
   "packageManager": "pnpm@11.5.1",
   "scripts": {

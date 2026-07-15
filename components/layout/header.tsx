@@ -135,7 +135,7 @@ export function Header({ title, subtitle }: HeaderProps) {
           </div>
           <Avatar className="h-8 w-8 cursor-pointer">
             <AvatarFallback className="bg-primary text-primary-foreground text-sm">
-              MS
+              LL
             </AvatarFallback>
           </Avatar>
         </div>

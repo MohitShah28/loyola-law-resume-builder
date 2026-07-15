@@ -27,7 +27,8 @@ const MAX_OUTPUT_TOKENS = 8000
 // Groq free tier counts prompt + max_tokens against a 12k tokens-per-minute cap,
 // so the Groq request must reserve far less output budget than Gemini.
 const GROQ_MAX_OUTPUT_TOKENS = 3000
-const SYSTEM_PROMPT = "You write truthful ATS resumes and return valid JSON only."
+const SYSTEM_PROMPT =
+  "You write truthful ATS resumes for law students and legal professionals — judicial clerkships, firm associate and summer associate roles, and public interest positions — and return valid JSON only."
 
 type GroqCompletionUsage = {
   prompt_tokens?: number
@@ -152,9 +153,11 @@ async function getGoogleJobContext(payload: GenerateResumePayload, fallback: Gen
 
 function buildPrompt(payload: GenerateResumePayload, fallback: GeneratedResume, googleContext: string) {
   return `
-Create a content-rich, one-page ATS resume tailored to the job.
+Create a content-rich, one-page ATS resume tailored to the job. The candidate is typically a law student or recent law graduate applying to legal positions (judicial clerkships and externships, law firm associate/summer associate roles, public interest and government positions).
 
 Rules:
+- Use legal-industry resume conventions: emphasize legal research and writing, advocacy, drafting (memoranda, motions, briefs), clinical and externship work, journal membership, moot court, and bar admissions or certifications. Use precise legal terminology from the job description (practice areas, court names, procedural posture) when supported by the candidate's real experience.
+- For judicial clerkship applications, foreground research/writing, bench memoranda, cite-checking, and academic credentials. For firm roles, foreground practice-area fit, drafting, and diligence work. For public interest roles, foreground client service, clinics, community work, and language skills.
 - Use only truthful candidate data. Do not invent companies, degrees, dates, metrics, certifications, or work experience.
 - Never fabricate numbers: no invented percentages, counts, team sizes, or revenue figures. Use a number only when it appears in the candidate data.
 - If the job starts with PROFILE_ONLY_RESUME_REQUEST, make a strong general resume from the profile.
@@ -174,12 +177,12 @@ Rules:
   4. Leave unrelated projects mostly unchanged or omit them if stronger projects exist.
   5. Ground added project bullets in the project's real scope, technologies, or profile data, and phrase them with the job's required skills and terminology.
 - For selectedProjects, preserve the original project id/name/link. Only add a technology to a project's technologies list when the job requires it and it plausibly fits that project's real stack.
-- For software, AI, LLM, web, startup, API, or automation roles, emphasize supported software/product/automation work.
+- For litigation, transactional, regulatory, or compliance roles, emphasize supported research, drafting, advocacy, and matter-management work; for non-legal roles, emphasize the transferable analysis, writing, and project work the profile actually supports.
 - Return changeHighlights explaining the main edits made compared with the candidate profile/job input.
 - Use plain ATS formatting only. No tables, columns, icons, markdown fences, or extra commentary.
-- If template is "university-law", favor a university resume structure: PROFILE, EDUCATION, EXPERIENCE, PROJECTS, and TECHNICAL SKILLS. Keep education before experience, but make the content full enough to fill one page with supported details.
-- For template "university-law", include 6-8 experience bullets, 3-5 bullets for each relevant project, a strong 3-4 sentence profile, and a focused technical skills section. Do not create generic catch-all sections.
-- If template is "original-cv", favor this structure: PROFESSIONAL SUMMARY, AREAS OF EXPERTISE, PROFESSIONAL EXPERIENCE, PROJECTS, EDUCATION, TECHNICAL SKILLS. Make the content dense enough to visually fill one full page with minimal whitespace.
+- If template is "university-law", favor a law-school resume structure: PROFILE, EDUCATION, EXPERIENCE, PROJECTS (journals, moot court, clinics), and SKILLS. Keep education before experience, but make the content full enough to fill one page with supported details.
+- For template "university-law", include 6-8 experience bullets, 3-5 bullets for each relevant project, a strong 3-4 sentence profile, and a focused skills section. Do not create generic catch-all sections.
+- If template is "original-cv", favor this structure: PROFESSIONAL SUMMARY, AREAS OF EXPERTISE, PROFESSIONAL EXPERIENCE, PROJECTS, EDUCATION, SKILLS. Make the content dense enough to visually fill one full page with minimal whitespace.
 - For template "original-cv", write a 3-4 sentence professional summary, 12-15 areas of expertise, include all relevant experience entries, and prefer fuller bullets over short generic bullets.
 - Certifications and achievements must come only from the candidate data arrays. If those arrays are empty, do not mention or create those sections.
 - If the candidate has real certifications, include a dedicated CERTIFICATIONS section with name, issuer, date, and credential ID only when available.

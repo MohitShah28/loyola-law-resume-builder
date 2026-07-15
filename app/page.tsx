@@ -35,7 +35,7 @@ const actions = [
 
 export default function DashboardPage() {
   return (
-    <AppLayout title="Dashboard" subtitle="Welcome back, Mohit">
+    <AppLayout title="Dashboard" subtitle="Welcome, Loyola Law student">
       <div className="max-w-5xl mx-auto space-y-6">
         <AnimatedCard hover={false}>
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -44,9 +44,9 @@ export default function DashboardPage() {
                 <Sparkles className="h-6 w-6 text-primary-foreground" />
               </div>
               <div>
-                <h2 className="font-semibold text-lg text-foreground">Create a tailored resume</h2>
+                <h2 className="font-semibold text-lg text-foreground">Create a tailored legal resume</h2>
                 <p className="text-muted-foreground text-sm">
-                  Paste a job description and generate an ATS-friendly resume.
+                  Paste a job description — clerkship, firm, or public interest — and generate an ATS-friendly resume.
                 </p>
               </div>
             </div>

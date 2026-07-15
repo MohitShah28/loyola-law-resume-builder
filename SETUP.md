@@ -1,6 +1,6 @@
-# Setup Guide (for Students)
+# Setup Guide (for Loyola Law Students)
 
-This project runs the same on **Mac** and **Windows**. Follow the steps for your system.
+This is the **Loyola Law Resume Builder** — it runs the same on **Mac** and **Windows**. Follow the steps for your system.
 
 > Note: this is a JavaScript (Next.js) project, not Python — so there is no
 > `requirements.txt`. The equivalent here is `package.json`: running

@@ -1,6 +1,8 @@
-# Resume AI
+# Loyola Law Resume Builder
 
-AI-powered resume tailoring app. Paste a job description, and it rewrites your master profile into a job-specific, ATS-friendly, one-page resume — with keyword matching, an ATS score, live preview, and PDF/DOCX export.
+AI-powered resume tailoring app for **Loyola Law School students**. Paste a job description — judicial clerkship, firm associate, summer associate, government, or public interest — and it rewrites your master profile into a job-specific, ATS-friendly, one-page legal resume — with keyword matching, an ATS score, live preview, and PDF/DOCX export.
+
+Your data never leaves your browser: everything is stored in `localStorage`, with no accounts and no database.
 
 Built with **Next.js 16 (App Router) + React 19 + TypeScript + Tailwind CSS 4**, using **Groq** (Llama 3.3 70B) as the primary LLM and **Gemini** as a fallback.
 
@@ -40,7 +42,7 @@ Master Profile (localStorage)      Job Description (pasted)
 | `/settings` | App settings |
 | `/history` | Placeholder (empty — see "What's Missing") |
 
-Resume templates: `modern` (default), `compact`, `original-cv`, `university-law`. A reference DOCX for the law template lives in `public/templates/`.
+Resume templates: `university-law` (default — the law-school format), `modern`, `compact`, `harvard`, `executive`, `original-cv`. A reference DOCX for the law template lives in `public/templates/`.
 
 ## Getting Started
 

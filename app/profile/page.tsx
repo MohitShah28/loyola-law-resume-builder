@@ -38,7 +38,7 @@ const sections = [
   { id: "education", label: "Education", icon: GraduationCap },
   { id: "experience", label: "Work Experience", icon: Briefcase },
   { id: "projects", label: "Projects", icon: FolderGit2 },
-  { id: "skills", label: "Technical Skills", icon: Code2 },
+  { id: "skills", label: "Skills", icon: Code2 },
   { id: "certifications", label: "Certifications", icon: Award },
   { id: "achievements", label: "Achievements", icon: Trophy },
   { id: "links", label: "Links", icon: LinkIcon },
@@ -747,11 +747,11 @@ function ProjectsSection({ profile, setProfile }: { profile: Profile; setProfile
 
 function SkillsSection({ profile, setProfile }: { profile: Profile; setProfile: SetProfile }) {
   const skillCategories = [
-    { key: "programming", label: "Programming Languages" },
-    { key: "dataAnalysis", label: "Data Analysis & Machine Learning" },
-    { key: "visualization", label: "Visualization & Business Intelligence" },
-    { key: "databases", label: "Databases" },
-    { key: "tools", label: "Tools & Frameworks" },
+    { key: "programming", label: "Research Platforms (Westlaw, Lexis, ...)" },
+    { key: "dataAnalysis", label: "Legal Skills (Research, Writing, Advocacy)" },
+    { key: "visualization", label: "Technology & Office Software" },
+    { key: "databases", label: "Practice & Litigation Tools" },
+    { key: "tools", label: "Additional (Languages, Licenses)" },
   ] as const
 
   const addSkill = (category: keyof Profile["skills"]) => {
@@ -778,7 +778,7 @@ function SkillsSection({ profile, setProfile }: { profile: Profile; setProfile: 
 
   return (
     <AnimatedCard hover={false}>
-      <h2 className="text-lg font-semibold mb-6 text-foreground">Technical Skills</h2>
+      <h2 className="text-lg font-semibold mb-6 text-foreground">Skills</h2>
       <div className="space-y-6">
         {skillCategories.map((category) => (
           <div key={category.key} className="space-y-2">

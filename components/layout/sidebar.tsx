@@ -85,7 +85,7 @@ export function Sidebar() {
                   exit={{ opacity: 0, width: 0 }}
                   className="font-semibold text-lg text-foreground whitespace-nowrap overflow-hidden"
                 >
-                  ResumeForge
+                  Loyola Law Resume Builder
                 </motion.span>
               )}
             </AnimatePresence>

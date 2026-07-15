@@ -5,8 +5,8 @@ import { ThemeProvider } from '@/components/theme-provider'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'ResumeForge - AI-Powered Resume Builder',
-  description: 'Create ATS-optimized resumes tailored to any job description. Built for professionals who want to stand out.',
+  title: 'Loyola Law Resume Builder - AI-Powered Resume Tailoring',
+  description: 'Create ATS-optimized legal resumes tailored to any job description. Built for Loyola Law School students.',
   generator: 'v0.app',
 }
 

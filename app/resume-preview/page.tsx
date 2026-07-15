@@ -30,8 +30,8 @@ import { toast } from "sonner"
 
 const fallbackResume = generateResumeFromJob({
   profile: mockProfile,
-  jobDescription: "Data Analyst role requiring Python, SQL, dashboards, data visualization, stakeholder management, and business intelligence.",
-  template: "modern",
+  jobDescription: "Judicial extern position requiring legal research, persuasive and objective legal writing, case analysis, Westlaw and Lexis proficiency, and strong attention to detail.",
+  template: "university-law",
   tone: "professional",
   experienceLevel: "mid",
   length: "medium",
@@ -40,6 +40,13 @@ const fallbackResume = generateResumeFromJob({
 const UNIVERSITY_LAW_FONT_FAMILY = 'Calibri, "Carlito", Arial, sans-serif'
 const ORIGINAL_CV_FONT_FAMILY = '"Times New Roman", Times, serif'
 
+// TODO(loyola-official): when the supervisor's official Loyola Law template arrives,
+// add it as a 7th template following the university-law pattern:
+//   1. a "loyola-official" entry in templateStyles below
+//   2. a dedicated renderer component (see UniversityLawResume)
+//   3. a dedicated download-text builder (see buildUniversityLawDownloadText)
+//   4. the reference file in public/templates/
+// Also add the template card in app/resume-builder/page.tsx.
 const templateStyles = {
   "original-cv": {
     body: "",
@@ -95,7 +102,7 @@ type TemplateId = keyof typeof templateStyles
 type ResumeProject = GeneratedResume["selectedProjects"][number]
 type ResumeCertification = GeneratedResume["selectedCertifications"][number]
 
-const fallbackTemplateId: TemplateId = "modern"
+const fallbackTemplateId: TemplateId = "university-law"
 const RESUME_PAGE_WIDTH = 8.5 * 96
 const RESUME_PAGE_HEIGHT = 11 * 96
 
@@ -576,7 +583,7 @@ function buildDownloadText({
     "PROFESSIONAL SUMMARY",
     generatedResume.improvedSummary || generatedResume.summary,
     "",
-    "TECHNICAL SKILLS",
+    "SKILLS",
     `Relevant Skills: ${tailoredSkills.join(", ")}`,
     "",
     "PROFESSIONAL EXPERIENCE",
@@ -656,7 +663,7 @@ function buildUniversityLawDownloadText({
       `${project.name}\t${project.technologies.slice(0, 8).join(", ")}`,
       ...project.highlights.slice(0, hasSupplementalSections ? 3 : 5).map((highlight) => `- ${highlight}`),
     ]),
-    "TECHNICAL SKILLS",
+    "SKILLS",
     docxSkills.join(", "),
     certificationLines.length ? "" : undefined,
     certificationLines.length ? "CERTIFICATIONS" : undefined,
@@ -737,11 +744,11 @@ function buildOriginalCvDownloadText({
     "EDUCATION",
     ...profile.education.map((edu) => `${edu.degree} in ${edu.field}, ${edu.institution}${edu.gpa ? ` [${edu.gpa} GPA]` : ""}`),
     "",
-    "TECHNICAL SKILLS",
-    `Programming Languages: ${profile.skills.programming.join(", ")}`,
-    `Business Intelligence: ${[...profile.skills.visualization, "MS Excel"].join(", ")}`,
-    `Data & Machine Learning: ${profile.skills.dataAnalysis.join(", ")}`,
-    `Databases & Tools: ${[...profile.skills.databases, ...profile.skills.tools].join(", ")}`,
+    "SKILLS",
+    `Research Platforms: ${profile.skills.programming.join(", ")}`,
+    `Technology: ${[...profile.skills.visualization].join(", ")}`,
+    `Legal Skills: ${profile.skills.dataAnalysis.join(", ")}`,
+    `Practice Tools & Additional: ${[...profile.skills.databases, ...profile.skills.tools].join(", ")}`,
     certificationLines.length ? "" : undefined,
     certificationLines.length ? "CERTIFICATIONS" : undefined,
     ...certificationLines,
@@ -895,7 +902,7 @@ function UniversityLawResume({
         </UniversitySection>
       )}
 
-      <UniversitySection title="Technical Skills">
+      <UniversitySection title="Skills">
         <p style={{ margin: 0 }}>
           {tailoredSkills.map((skill, index) => (
             <span key={`${skill}-${index}`}>
@@ -1072,18 +1079,18 @@ function OriginalCvResume({
         ))}
       </DenseSection>
 
-      <DenseSection title="Technical Skills">
+      <DenseSection title="Skills">
         <p style={{ margin: "0.04em 0" }}>
-          <strong>Programming Languages:</strong> {profile.skills.programming.join(", ")}
+          <strong>Research Platforms:</strong> {profile.skills.programming.join(", ")}
         </p>
         <p style={{ margin: "0.04em 0" }}>
-          <strong>Business Intelligence:</strong> {[...profile.skills.visualization, "MS Excel"].join(", ")}
+          <strong>Technology:</strong> {[...profile.skills.visualization].join(", ")}
         </p>
         <p style={{ margin: "0.04em 0" }}>
-          <strong>Data & Machine Learning:</strong> {profile.skills.dataAnalysis.join(", ")}
+          <strong>Legal Skills:</strong> {profile.skills.dataAnalysis.join(", ")}
         </p>
         <p style={{ margin: "0.04em 0" }}>
-          <strong>Databases & Tools:</strong> {[...profile.skills.databases, ...profile.skills.tools].join(", ")}
+          <strong>Practice Tools & Additional:</strong> {[...profile.skills.databases, ...profile.skills.tools].join(", ")}
         </p>
       </DenseSection>
 
@@ -1467,10 +1474,10 @@ export default function ResumePreviewPage() {
                     </p>
                   </div>
 
-                  {/* Technical Skills */}
+                  {/* Skills */}
                   <div className={isCompact ? "mb-1.5" : "mb-2.5"}>
                     <h2 className={cn("text-sm font-bold pb-1 mb-1.5", resumeTemplate.section)}>
-                      Technical Skills
+                      Skills
                     </h2>
                     <div className="text-gray-700" style={{ fontSize: "11px", margin: 0 }}>
                       <p style={{ margin: 0 }}>

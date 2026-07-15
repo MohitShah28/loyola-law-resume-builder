@@ -59,7 +59,7 @@ export default function SettingsPage() {
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
     link.href = url
-    link.download = `resume-ai-profile-backup-${new Date().toISOString().slice(0, 10)}.json`
+    link.download = `loyola-law-resume-profile-backup-${new Date().toISOString().slice(0, 10)}.json`
     document.body.appendChild(link)
     link.click()
     link.remove()
@@ -103,7 +103,7 @@ export default function SettingsPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Full Name</Label>
-                <Input id="name" defaultValue="Mohit Shah" />
+                <Input id="name" defaultValue="Loyola Law Student" />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email Address</Label>

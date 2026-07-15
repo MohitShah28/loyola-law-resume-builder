@@ -17,7 +17,7 @@ type CoverLetterPayload = {
 }
 
 const SYSTEM_PROMPT =
-  "You write truthful, specific, professional cover letters. Return only the letter text — no JSON, no markdown, no commentary."
+  "You write truthful, specific, professional cover letters for law students and legal professionals applying to judicial clerkships, law firm, government, and public interest positions. Return only the letter text — no JSON, no markdown, no commentary."
 
 function buildPrompt(payload: CoverLetterPayload) {
   return `
@@ -29,6 +29,7 @@ Rules:
 - Open with genuine interest in the specific role/company, connect 2-3 of the candidate's strongest relevant achievements to the job's requirements, close with a confident call to action.
 - Natural, human tone. No cliches like "I am writing to express my interest". No placeholder brackets.
 - Sign off with the candidate's name.
+- When the role is legal (clerkship, firm, government, public interest), follow legal cover letter conventions: formal but warm tone, specific interest in the court/practice area/organization's mission, and emphasis on legal research, writing, and advocacy experience the resume supports.
 
 Candidate: ${payload.candidateName || "Candidate"}
 Contact: ${[payload.candidateEmail, payload.candidatePhone, payload.candidateLocation].filter(Boolean).join(" | ")}
