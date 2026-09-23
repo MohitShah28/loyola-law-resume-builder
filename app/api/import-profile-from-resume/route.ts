@@ -3,6 +3,8 @@ import Groq from "groq-sdk"
 import mammoth from "mammoth"
 import { NextResponse } from "next/server"
 import { ProfileData, ResumeTokenUsage } from "@/lib/resume-generator"
+import { parseJsonWithRepair } from "@/lib/json-repair"
+import { getOpenRouterApiKey, requestOpenRouterText } from "@/lib/openrouter"
 
 const nodeRequire = createRequire(import.meta.url)
 
@@ -34,6 +36,16 @@ function getEmptyProfile(): ProfileData {
     },
     certifications: [],
     achievements: [],
+    barAdmission: [],
+    barDetails: { admissions: [], usBarExams: [] },
+    workAuthorization: "",
+    workAuthorizationDetails: { status: "", startDate: "", endDate: "", needsSponsorship: "" },
+    additionalInfo: {
+      languages: [],
+      volunteer: [],
+      memberships: [],
+      interests: [],
+    },
   }
 }
 
@@ -88,6 +100,8 @@ Rules:
 - Do not invent companies, dates, degrees, links, metrics, skills, certifications, or achievements.
 - Preserve truthful metrics and dates exactly when present.
 - Keep arrays empty when details are missing.
+- Student organizations, journals, moot court, clinics, and leadership roles listed under a school go in that school's education "activities" array (format: "Organization, Role (dates)"), not in projects.
+- Put education honors (e.g. "With Distinction", "cum laude") or GPA in the education "gpa" field.
 - Return valid JSON only.
 
 Return this exact JSON shape:
@@ -111,7 +125,10 @@ Return this exact JSON shape:
       "field": "",
       "startDate": "",
       "endDate": "",
-      "gpa": ""
+      "gpa": "honors such as With Distinction, or GPA",
+      "location": "City, State",
+      "coursework": ["relevant courses listed on the resume, e.g. Federal Income Tax"],
+      "activities": ["e.g. Intellectual Property Law Society, Secretary (Fall 2021 – Present)"]
     }
   ],
   "experience": [
@@ -152,7 +169,25 @@ Return this exact JSON shape:
       "credentialId": ""
     }
   ],
-  "achievements": []
+  "achievements": [],
+  "barDetails": {
+    "admissions": [{ "id": "", "jurisdiction": "e.g. British Columbia", "year": "e.g. 2017" }],
+    "usBarExams": [{ "id": "", "jurisdiction": "e.g. California", "examDate": "e.g. July 2027", "status": "registered | eligible | passed" }]
+  },
+  "barAdmission": ["only bar-related lines that do not fit barDetails"],
+  "workAuthorizationDetails": {
+    "status": "us-citizen | permanent-resident | f1-opt | f1-cpt | j1-academic-training | h1b | ead | empty string if not stated",
+    "startDate": "",
+    "endDate": "",
+    "needsSponsorship": ""
+  },
+  "workAuthorization": "the exact work authorization line from the resume, if any",
+  "additionalInfo": {
+    "languages": [],
+    "volunteer": [],
+    "memberships": [],
+    "interests": []
+  }
 }
 
 Resume text:
@@ -185,7 +220,14 @@ function normalizeImportedProfile(value: Partial<ProfileData>): ProfileData {
       ...emptyProfile.personalInfo,
       ...(value.personalInfo || {}),
     },
-    education: Array.isArray(value.education) ? value.education : [],
+    education: Array.isArray(value.education)
+      ? value.education.map((edu) => ({
+          ...edu,
+          location: typeof edu.location === "string" ? edu.location : "",
+          coursework: Array.isArray(edu.coursework) ? edu.coursework : [],
+          activities: Array.isArray(edu.activities) ? edu.activities : [],
+        }))
+      : [],
     experience: Array.isArray(value.experience) ? value.experience : [],
     projects: Array.isArray(value.projects) ? value.projects : [],
     skills: {
@@ -198,6 +240,24 @@ function normalizeImportedProfile(value: Partial<ProfileData>): ProfileData {
     },
     certifications: Array.isArray(value.certifications) ? value.certifications : [],
     achievements: Array.isArray(value.achievements) ? value.achievements : [],
+    barAdmission: Array.isArray(value.barAdmission) ? value.barAdmission : [],
+    barDetails: {
+      admissions: Array.isArray(value.barDetails?.admissions) ? value.barDetails.admissions : [],
+      usBarExams: Array.isArray(value.barDetails?.usBarExams) ? value.barDetails.usBarExams : [],
+    },
+    workAuthorization: typeof value.workAuthorization === "string" ? value.workAuthorization : "",
+    workAuthorizationDetails: {
+      status: typeof value.workAuthorizationDetails?.status === "string" ? value.workAuthorizationDetails.status : "",
+      startDate: typeof value.workAuthorizationDetails?.startDate === "string" ? value.workAuthorizationDetails.startDate : "",
+      endDate: typeof value.workAuthorizationDetails?.endDate === "string" ? value.workAuthorizationDetails.endDate : "",
+      needsSponsorship: typeof value.workAuthorizationDetails?.needsSponsorship === "string" ? value.workAuthorizationDetails.needsSponsorship : "",
+    },
+    additionalInfo: {
+      languages: Array.isArray(value.additionalInfo?.languages) ? value.additionalInfo.languages : [],
+      volunteer: Array.isArray(value.additionalInfo?.volunteer) ? value.additionalInfo.volunteer : [],
+      memberships: Array.isArray(value.additionalInfo?.memberships) ? value.additionalInfo.memberships : [],
+      interests: Array.isArray(value.additionalInfo?.interests) ? value.additionalInfo.interests : [],
+    },
   }
 }
 
@@ -222,9 +282,10 @@ export async function POST(request: Request) {
   try {
     const apiKeys = getGroqApiKeys()
     const model = process.env.GROQ_MODEL || "llama-3.3-70b-versatile"
+    const openRouterApiKey = getOpenRouterApiKey()
 
-    if (!apiKeys.length) {
-      return NextResponse.json({ error: "GROQ_API_KEY is not configured." }, { status: 500 })
+    if (!apiKeys.length && !openRouterApiKey) {
+      return NextResponse.json({ error: "No AI provider is configured (set GROQ_API_KEY or OPENROUTER_API_KEY)." }, { status: 500 })
     }
 
     const resumeText = (await extractResumeText(request)).trim()
@@ -268,6 +329,25 @@ export async function POST(request: Request) {
       } catch (error) {
         lastError = error
         console.warn(`Resume import Groq key ${apiKeyPosition + 1} failed`, error)
+      }
+    }
+
+    // Groq is out (rate limit, outage, or no key): fall back to OpenRouter.
+    if (openRouterApiKey) {
+      try {
+        const result = await requestOpenRouterText({
+          apiKey: openRouterApiKey,
+          system: "You extract truthful resume data into JSON only.",
+          prompt: buildPrompt(resumeText),
+          maxTokens: 8000,
+          temperature: 0,
+        })
+        const profile = normalizeImportedProfile(parseJsonWithRepair<ProfileData>(result.text))
+        const tokenUsage: ResumeTokenUsage = { provider: "openrouter", model: result.model, apiKeyIndex: 1, ...result.usage }
+        return NextResponse.json({ profile, tokenUsage })
+      } catch (error) {
+        lastError = error
+        console.warn("Resume import OpenRouter fallback failed", error)
       }
     }
 

@@ -24,6 +24,17 @@ const ORIGINAL_CV_FONT_FAMILY = '"Times New Roman", Times, serif'
 
 const templates = [
   {
+    id: "university-law",
+    name: "University (Loyola official)",
+    description: "The official Loyola Law School resume format",
+    preview: {
+      header: "center",
+      accent: "bg-gray-900",
+      section: "text-gray-950 underline underline-offset-2",
+      body: ""
+    }
+  },
+  {
     id: "original-cv",
     name: "Original CV Dense",
     description: "Dense one-page format based on your resume",
@@ -31,17 +42,6 @@ const templates = [
       header: "center",
       accent: "bg-gray-700",
       section: "border-gray-600 text-gray-700",
-      body: ""
-    }
-  },
-  {
-    id: "university-law",
-    name: "University LLM",
-    description: "University-provided legal resume format",
-    preview: {
-      header: "center",
-      accent: "bg-gray-900",
-      section: "text-gray-950 underline underline-offset-2",
       body: ""
     }
   },
@@ -95,7 +95,7 @@ const generationSteps = [
   { id: 1, label: "Reading profile data" },
   { id: 2, label: "Analyzing job description" },
   { id: 3, label: "Matching keywords" },
-  { id: 4, label: "Selecting best projects" },
+  { id: 4, label: "Selecting relevant experience" },
   { id: 5, label: "Writing bullet points" },
   { id: 6, label: "Formatting resume" },
   { id: 7, label: "Final ATS check" }
@@ -191,7 +191,7 @@ export default function ResumeBuilderPage() {
               <AnimatedCard delay={0.1} hover={false}>
                 <Label className="text-lg font-semibold text-foreground">Resume Template</Label>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Choose an ATS-friendly template
+                  Every template uses the Loyola Law resume layout; choose the look
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
                   {templates.map((template) => (
@@ -282,27 +282,21 @@ export default function ResumeBuilderPage() {
                     {selectedTemplate === "original-cv" && (
                       <>
                         <div className="text-center mb-3">
-                          <div className="text-2xl font-bold tracking-wide">JORDAN RIVERA, J.D. CANDIDATE</div>
-                          <div className="text-sm text-gray-600">Judicial Extern | Law Review | Moot Court</div>
-                          <div className="text-xs text-gray-800 mt-1">+1 213-555-0164 | Los Angeles, CA | email@example.com | linkedin.com/in/jordanrivera</div>
+                          <div className="text-2xl font-bold tracking-wide">SOFIA MARTINEZ</div>
+                          <div className="text-xs text-gray-800 mt-1">Los Angeles, CA | (213) 555-0147 | sofia.martinez@lls.edu</div>
                         </div>
-                        <TemplateRows
-                          sectionClass="border-gray-600 text-gray-700"
-                          sections={["Professional Summary", "Areas of Expertise", "Professional Experience", "Project", "Education", "Skills"]}
-                          compact
-                        />
+                        <TemplateRows sectionClass="border-gray-600 text-gray-700" compact />
                       </>
                     )}
 
                     {selectedTemplate === "university-law" && (
                       <>
                         <div className="text-center mb-5">
-                          <div className="text-2xl font-bold">JORDAN RIVERA</div>
-                          <div className="text-xs text-gray-700 mt-1">Los Angeles, CA | (555) 123-4567 | email@example.com</div>
+                          <div className="text-2xl font-bold">SOFIA MARTINEZ</div>
+                          <div className="text-xs text-gray-700 mt-1">Los Angeles, CA | (213) 555-0147 | sofia.martinez@lls.edu</div>
                         </div>
                         <TemplateRows
                           sectionClass="text-gray-950 underline underline-offset-2"
-                          sections={["Education", "Experience", "Projects", "Skills"]}
                           university
                         />
                       </>
@@ -311,9 +305,8 @@ export default function ResumeBuilderPage() {
                     {selectedTemplate === "harvard" && (
                       <>
                         <div className="text-center border-b-2 border-gray-900 pb-4 mb-4">
-                          <div className="text-2xl font-bold">Jordan Rivera</div>
-                          <div className="text-xs text-gray-600 mt-1">email@example.com | (555) 123-4567 | Los Angeles, CA</div>
-                          <div className="text-xs text-gray-600">linkedin.com/in/jordanrivera</div>
+                          <div className="text-2xl font-bold">Sofia Martinez</div>
+                          <div className="text-xs text-gray-600 mt-1">Los Angeles, CA | (213) 555-0147 | sofia.martinez@lls.edu</div>
                         </div>
                         <TemplateRows sectionClass="border-gray-900 text-gray-950 tracking-wider" />
                       </>
@@ -324,15 +317,12 @@ export default function ResumeBuilderPage() {
                         <div className="border-t-4 border-gray-900 pt-4 pb-4 mb-4">
                           <div className="flex items-start justify-between gap-6">
                             <div>
-                              <div className="text-3xl font-bold text-gray-950">Jordan Rivera</div>
-                              <div className="text-xs font-medium uppercase tracking-wide text-gray-600 mt-1">
-                                J.D. Candidate | Legal Research & Writing
-                              </div>
+                              <div className="text-3xl font-bold text-gray-950">Sofia Martinez</div>
                             </div>
                             <div className="text-[11px] text-gray-600 text-right leading-relaxed">
-                              email@example.com<br />
-                              linkedin.com/in/jordanrivera<br />
-                              Los Angeles, CA
+                              Los Angeles, CA<br />
+                              (213) 555-0147<br />
+                              sofia.martinez@lls.edu
                             </div>
                           </div>
                         </div>
@@ -343,9 +333,9 @@ export default function ResumeBuilderPage() {
                     {selectedTemplate === "executive" && (
                       <>
                         <div className="border-y-2 border-gray-800 py-5 mb-5 text-center">
-                          <div className="text-3xl font-bold tracking-wide">JORDAN RIVERA</div>
+                          <div className="text-3xl font-bold tracking-wide">SOFIA MARTINEZ</div>
                           <div className="w-20 h-px bg-gray-800 mx-auto my-2" />
-                          <div className="text-xs text-gray-600">Los Angeles, CA | email@example.com | linkedin.com/in/jordanrivera</div>
+                          <div className="text-xs text-gray-600">Los Angeles, CA | (213) 555-0147 | sofia.martinez@lls.edu</div>
                         </div>
                         <TemplateRows sectionClass="border-gray-400 text-gray-950 tracking-[0.16em]" titleClass="font-serif" />
                       </>
@@ -355,11 +345,10 @@ export default function ResumeBuilderPage() {
                       <>
                         <div className="flex justify-between items-start border-b border-gray-300 pb-3 mb-3">
                           <div>
-                            <div className="text-2xl font-bold">Jordan Rivera</div>
-                            <div className="text-xs text-gray-600">J.D. Candidate | Legal Extern</div>
+                            <div className="text-2xl font-bold">Sofia Martinez</div>
                           </div>
                           <div className="text-[10px] text-gray-500 text-right leading-tight">
-                            email@example.com<br />Los Angeles, CA<br />linkedin.com/in/jordanrivera
+                            Los Angeles, CA<br />(213) 555-0147<br />sofia.martinez@lls.edu
                           </div>
                         </div>
                         <TemplateRows sectionClass="border-gray-300 text-gray-950 tracking-wide" compact />
@@ -475,9 +464,8 @@ function TemplateRows({
   sections?: string[]
   university?: boolean
 }) {
-  const sections = sectionsOverride || (compact
-    ? ["Summary", "Skills", "Experience", "Projects", "Education"]
-    : ["Professional Summary", "Skills", "Professional Experience", "Projects", "Education"])
+  // Every template uses the Loyola Law sample section order.
+  const sections = sectionsOverride || ["Bar Admission", "Work Authorization", "Education", "Experience", "Additional Information"]
 
   return (
     <>

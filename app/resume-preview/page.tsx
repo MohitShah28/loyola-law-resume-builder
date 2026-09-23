@@ -11,21 +11,33 @@ import {
   AlertCircle,
   TrendingUp,
   Edit,
-  ExternalLink,
+  Check,
+  Plus,
   Copy,
   Mail,
   Loader2
 } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AppLayout } from "@/components/layout/app-layout"
 import { AnimatedCard } from "@/components/ui/animated-card"
 import { AtsScoreCircle } from "@/components/ui/ats-score-circle"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { mockProfile } from "@/lib/data"
-import { GeneratedResume, generateResumeFromJob } from "@/lib/resume-generator"
-import { loadGeneratedResumes, loadLatestGeneratedResume } from "@/lib/profile-storage"
+import { GeneratedResume, atsScoreMessage, generateResumeFromJob } from "@/lib/resume-generator"
+import {
+  buildResumeDocument,
+  documentToDocxBody,
+  documentToText,
+  type DocxStyle,
+  type LabeledRow,
+  type ResumeDocument,
+} from "@/lib/resume-document"
+import { addSkillsToMasterProfile, loadGeneratedResumes, loadLatestGeneratedResume } from "@/lib/profile-storage"
 import { cn } from "@/lib/utils"
+import { buildPrintHtml, openPrintWindow } from "@/lib/print-html"
+import { createDocxBlob, downloadBlob, sanitizeFilename } from "@/lib/docx"
 import { toast } from "sonner"
 
 const fallbackResume = generateResumeFromJob({
@@ -40,75 +52,125 @@ const fallbackResume = generateResumeFromJob({
 const UNIVERSITY_LAW_FONT_FAMILY = 'Calibri, "Carlito", Arial, sans-serif'
 const ORIGINAL_CV_FONT_FAMILY = '"Times New Roman", Times, serif'
 
-// TODO(loyola-official): when the supervisor's official Loyola Law template arrives,
-// add it as a 7th template following the university-law pattern:
-//   1. a "loyola-official" entry in templateStyles below
-//   2. a dedicated renderer component (see UniversityLawResume)
-//   3. a dedicated download-text builder (see buildUniversityLawDownloadText)
-//   4. the reference file in public/templates/
-// Also add the template card in app/resume-builder/page.tsx.
+// Every template renders the official Loyola Law sample layout from
+// lib/resume-document.ts (Bar Admission, Work Authorization, Education with
+// Activities, Experience, Additional Information). Templates only change the
+// typeface, header treatment, and heading style.
+type TemplateStyle = {
+  fontFamily?: string
+  body: string
+  fontSize: number
+  lineHeight: number
+  page: string
+  header: string
+  name: string
+  nameSize: number
+  contact: string
+  section: string
+  sectionGap: string
+  docx: DocxStyle
+}
+
 const templateStyles = {
-  "original-cv": {
-    body: "",
-    header: "text-center mb-2",
-    name: "font-bold text-gray-950 tracking-wide",
-    contact: "text-gray-800",
-    section: "text-gray-700 uppercase border-b border-gray-600",
-    itemTitle: "font-bold text-gray-950",
-  },
   "university-law": {
+    fontFamily: UNIVERSITY_LAW_FONT_FAMILY,
     body: "",
+    fontSize: 11.5,
+    lineHeight: 1.2,
+    page: "px-24 py-16",
+    header: "text-center mb-5",
+    name: "font-bold uppercase",
+    nameSize: 15,
+    contact: "text-gray-950",
+    section: "font-bold uppercase underline underline-offset-2 text-gray-950",
+    sectionGap: "mb-4",
+    docx: { font: "Calibri", bodySize: 22, nameSize: 28, margin: 1440 },
+  },
+  "original-cv": {
+    fontFamily: ORIGINAL_CV_FONT_FAMILY,
+    body: "",
+    fontSize: 11.5,
+    lineHeight: 1.18,
+    page: "px-20 py-14",
     header: "text-center mb-4",
-    name: "font-bold text-gray-950 uppercase",
-    contact: "text-gray-700",
-    section: "text-gray-950 uppercase underline underline-offset-2",
-    itemTitle: "font-bold text-gray-950",
+    name: "font-bold uppercase tracking-wide",
+    nameSize: 18,
+    contact: "text-gray-800",
+    section: "uppercase text-gray-700 border-b border-gray-600 pb-0.5",
+    sectionGap: "mb-3.5",
+    docx: { font: "Times New Roman", bodySize: 22, nameSize: 32, margin: 1260 },
   },
   harvard: {
     body: "font-serif",
-    header: "text-center border-b-2 border-gray-900 pb-3 mb-3",
+    fontSize: 11.5,
+    lineHeight: 1.2,
+    page: "px-20 py-14",
+    header: "text-center border-b-2 border-gray-900 pb-2 mb-4",
     name: "font-bold text-gray-950",
+    nameSize: 20,
     contact: "text-gray-700",
-    section: "text-gray-950 uppercase tracking-wider border-b border-gray-900",
-    itemTitle: "font-bold text-gray-950",
+    section: "font-bold uppercase tracking-wider text-gray-950 border-b border-gray-900 pb-0.5",
+    sectionGap: "mb-3.5",
+    docx: { font: "Times New Roman", bodySize: 22, nameSize: 32, margin: 1440 },
   },
   modern: {
     body: "font-sans",
-    header: "text-left border-t-4 border-gray-900 pt-4 pb-3 mb-3",
+    fontSize: 11,
+    lineHeight: 1.22,
+    page: "px-16 py-12",
+    header: "text-left border-t-4 border-gray-900 pt-3 pb-2 mb-4",
     name: "font-bold text-gray-950",
+    nameSize: 22,
     contact: "text-gray-600",
-    section: "text-gray-950 uppercase tracking-wide border-b border-gray-400",
-    itemTitle: "font-semibold text-gray-950",
+    section: "font-semibold uppercase tracking-wide text-gray-950 border-b border-gray-400 pb-0.5",
+    sectionGap: "mb-3.5",
+    docx: { font: "Arial", bodySize: 21, nameSize: 34, margin: 1080 },
   },
   executive: {
     body: "font-serif",
-    header: "text-center border-y-2 border-gray-800 py-5 mb-4",
-    name: "font-bold text-gray-950 tracking-wide",
+    fontSize: 11.5,
+    lineHeight: 1.2,
+    page: "px-20 py-14",
+    header: "text-center border-y-2 border-gray-800 py-4 mb-4",
+    name: "font-bold uppercase tracking-wide text-gray-950",
+    nameSize: 20,
     contact: "text-gray-700",
-    section: "text-gray-950 uppercase tracking-[0.16em] border-b border-gray-400",
-    itemTitle: "font-bold text-gray-950",
+    section: "font-bold uppercase tracking-[0.16em] text-gray-950 border-b border-gray-400 pb-0.5",
+    sectionGap: "mb-3.5",
+    docx: { font: "Georgia", bodySize: 21, nameSize: 32, margin: 1440 },
   },
   compact: {
     body: "font-sans",
-    header: "text-left border-b border-gray-300 pb-2 mb-2",
+    fontSize: 10.5,
+    lineHeight: 1.15,
+    page: "px-12 py-9",
+    header: "text-left border-b border-gray-300 pb-1.5 mb-3",
     name: "font-bold text-gray-950",
+    nameSize: 18,
     contact: "text-gray-600",
-    section: "text-gray-950 uppercase tracking-wide border-b border-gray-300",
-    itemTitle: "font-semibold text-gray-950",
+    section: "font-semibold uppercase tracking-wide text-gray-950 border-b border-gray-300 pb-0.5",
+    sectionGap: "mb-2.5",
+    docx: { font: "Arial", bodySize: 20, nameSize: 30, margin: 900 },
   },
-} as const
+} satisfies Record<string, TemplateStyle>
 
 type TemplateId = keyof typeof templateStyles
-type ResumeProject = GeneratedResume["selectedProjects"][number]
 type ResumeCertification = GeneratedResume["selectedCertifications"][number]
 
+// The preview always opens in the university's official format; students can
+// switch to another look with the template picker above the page.
 const fallbackTemplateId: TemplateId = "university-law"
+
+const templateLabels: Record<TemplateId, string> = {
+  "university-law": "University (Loyola official)",
+  "original-cv": "Original CV Dense",
+  harvard: "Harvard Classic",
+  modern: "Clean Professional",
+  executive: "Executive Serif",
+  compact: "Compact One-Page",
+}
 const RESUME_PAGE_WIDTH = 8.5 * 96
 const RESUME_PAGE_HEIGHT = 11 * 96
-
-function getTemplateId(value: string | undefined): TemplateId {
-  return value && value in templateStyles ? (value as TemplateId) : fallbackTemplateId
-}
 
 function matchesCertification(left: ResumeCertification, right: ResumeCertification) {
   return Boolean(
@@ -159,6 +221,24 @@ function normalizeGeneratedResume(resume: GeneratedResume): GeneratedResume {
     projects: Array.isArray(profile.projects) ? profile.projects : [],
     achievements: Array.isArray(profile.achievements) ? profile.achievements : [],
     certifications: Array.isArray(profile.certifications) ? profile.certifications : [],
+    barAdmission: Array.isArray(profile.barAdmission) ? profile.barAdmission : [],
+    barDetails: {
+      admissions: profile.barDetails?.admissions || [],
+      usBarExams: profile.barDetails?.usBarExams || [],
+    },
+    workAuthorization: typeof profile.workAuthorization === "string" ? profile.workAuthorization : "",
+    workAuthorizationDetails: {
+      status: profile.workAuthorizationDetails?.status || "",
+      startDate: profile.workAuthorizationDetails?.startDate || "",
+      endDate: profile.workAuthorizationDetails?.endDate || "",
+      needsSponsorship: profile.workAuthorizationDetails?.needsSponsorship || "",
+    },
+    additionalInfo: {
+      languages: profile.additionalInfo?.languages || [],
+      volunteer: profile.additionalInfo?.volunteer || [],
+      memberships: profile.additionalInfo?.memberships || [],
+      interests: profile.additionalInfo?.interests || [],
+    },
   }
   const normalizedResume = {
     ...fallbackResume,
@@ -184,362 +264,11 @@ function normalizeGeneratedResume(resume: GeneratedResume): GeneratedResume {
   }
 }
 
-function sanitizeFilename(value: string) {
-  return value.replace(/[^a-z0-9_-]+/gi, "_").replace(/^_+|_+$/g, "").toLowerCase()
-}
 
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement("a")
-  link.href = url
-  link.download = filename
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  URL.revokeObjectURL(url)
-}
 
-function buildResumePrintHtml(resumeNode: HTMLElement, fileBaseName: string, options?: { forServer?: boolean }) {
-  const styleTags = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
-    .map((node) => node.outerHTML)
-    .join("\n")
-  const clonedResume = resumeNode.cloneNode(true) as HTMLElement
-
-  clonedResume.classList.remove("shadow-lg", "rounded-lg")
-  clonedResume.style.width = "8.5in"
-  clonedResume.style.height = "11in"
-  clonedResume.style.maxWidth = "none"
-  clonedResume.style.margin = "0 auto"
-  clonedResume.style.boxShadow = "none"
-  clonedResume.style.borderRadius = "0"
-  clonedResume.style.overflow = "hidden"
-
-  return `<!doctype html>
-<html>
-  <head>
-    <title>${fileBaseName}</title>
-    ${options?.forServer ? `<base href="${window.location.origin}/">` : ""}
-    ${styleTags}
-    <style>
-      @page { size: letter; margin: 0; }
-      * {
-        font-variant-ligatures: none !important;
-        -webkit-font-variant-ligatures: none !important;
-        font-feature-settings: "liga" 0, "clig" 0, "dlig" 0 !important;
-      }
-      html, body {
-        width: 8.5in;
-        height: 11in;
-        margin: 0;
-        padding: 0;
-        background: #ffffff;
-        color: #111827;
-        overflow: hidden;
-      }
-      body {
-        display: flex;
-        justify-content: center;
-        align-items: flex-start;
-      }
-      .resume-print-root {
-        width: 8.5in !important;
-        max-width: none !important;
-        height: 11in !important;
-        min-height: 11in !important;
-        box-shadow: none !important;
-        border-radius: 0 !important;
-        overflow: hidden !important;
-        background: #ffffff !important;
-      }
-      .resume-print-page {
-        width: 8.5in !important;
-        height: 11in !important;
-        min-height: 11in !important;
-        box-sizing: border-box !important;
-        background: #ffffff !important;
-        color: #111827 !important;
-        overflow: hidden !important;
-        transform: none !important;
-        transform-origin: top left !important;
-        print-color-adjust: exact;
-        -webkit-print-color-adjust: exact;
-      }
-      .resume-page-content {
-        transform-origin: top left !important;
-      }
-      .resume-preview-highlight {
-        background: transparent !important;
-        box-shadow: none !important;
-        outline: none !important;
-      }
-    </style>
-  </head>
-  <body>
-    ${clonedResume.outerHTML}
-    ${options?.forServer ? "" : `<script>
-      window.addEventListener('load', () => {
-        setTimeout(() => {
-          window.print();
-          window.close();
-        }, 250);
-      });
-    </script>`}
-  </body>
-</html>`
-}
-
-function openResumePrintWindow(resumeNode: HTMLElement, fileBaseName: string) {
-  const printWindow = window.open("", "_blank", "width=980,height=1200")
-
-  if (!printWindow) {
-    toast.error("Please allow popups to export the PDF.")
-    return false
-  }
-
-  printWindow.document.open()
-  printWindow.document.write(buildResumePrintHtml(resumeNode, fileBaseName))
-  printWindow.document.close()
-  return true
-}
-
-function escapeXml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;")
-}
-
-function makeCrcTable() {
-  const table = new Uint32Array(256)
-  for (let index = 0; index < 256; index += 1) {
-    let crc = index
-    for (let bit = 0; bit < 8; bit += 1) {
-      crc = crc & 1 ? 0xedb88320 ^ (crc >>> 1) : crc >>> 1
-    }
-    table[index] = crc >>> 0
-  }
-  return table
-}
-
-const crcTable = makeCrcTable()
-
-function crc32(data: Uint8Array) {
-  let crc = 0xffffffff
-  for (const byte of data) {
-    crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8)
-  }
-  return (crc ^ 0xffffffff) >>> 0
-}
-
-function writeUint16(output: number[], value: number) {
-  output.push(value & 0xff, (value >>> 8) & 0xff)
-}
-
-function writeUint32(output: number[], value: number) {
-  output.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff)
-}
-
-function createZipBlob(files: { name: string; content: string }[]) {
-  const encoder = new TextEncoder()
-  const output: number[] = []
-  const centralDirectory: number[] = []
-
-  for (const file of files) {
-    const nameBytes = encoder.encode(file.name)
-    const contentBytes = encoder.encode(file.content)
-    const checksum = crc32(contentBytes)
-    const localHeaderOffset = output.length
-
-    writeUint32(output, 0x04034b50)
-    writeUint16(output, 20)
-    writeUint16(output, 0)
-    writeUint16(output, 0)
-    writeUint16(output, 0)
-    writeUint16(output, 0)
-    writeUint32(output, checksum)
-    writeUint32(output, contentBytes.length)
-    writeUint32(output, contentBytes.length)
-    writeUint16(output, nameBytes.length)
-    writeUint16(output, 0)
-    output.push(...nameBytes, ...contentBytes)
-
-    writeUint32(centralDirectory, 0x02014b50)
-    writeUint16(centralDirectory, 20)
-    writeUint16(centralDirectory, 20)
-    writeUint16(centralDirectory, 0)
-    writeUint16(centralDirectory, 0)
-    writeUint16(centralDirectory, 0)
-    writeUint16(centralDirectory, 0)
-    writeUint32(centralDirectory, checksum)
-    writeUint32(centralDirectory, contentBytes.length)
-    writeUint32(centralDirectory, contentBytes.length)
-    writeUint16(centralDirectory, nameBytes.length)
-    writeUint16(centralDirectory, 0)
-    writeUint16(centralDirectory, 0)
-    writeUint16(centralDirectory, 0)
-    writeUint16(centralDirectory, 0)
-    writeUint32(centralDirectory, 0)
-    writeUint32(centralDirectory, localHeaderOffset)
-    centralDirectory.push(...nameBytes)
-  }
-
-  const centralDirectoryOffset = output.length
-  output.push(...centralDirectory)
-  writeUint32(output, 0x06054b50)
-  writeUint16(output, 0)
-  writeUint16(output, 0)
-  writeUint16(output, files.length)
-  writeUint16(output, files.length)
-  writeUint32(output, centralDirectory.length)
-  writeUint32(output, centralDirectoryOffset)
-  writeUint16(output, 0)
-
-  return new Blob([new Uint8Array(output)], {
-    type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  })
-}
-
-function getDocxConfig(templateId: TemplateId) {
-  if (templateId === "university-law") {
-    return {
-      font: "Calibri",
-      bodySize: 18,
-      nameSize: 26,
-      headingSize: 20,
-      line: 188,
-      margin: 540,
-      tabPosition: 10100,
-    }
-  }
-
-  if (templateId === "original-cv") {
-    return {
-      font: "Times New Roman",
-      bodySize: 20,
-      nameSize: 40,
-      headingSize: 23,
-      line: 205,
-      margin: 540,
-      tabPosition: 9720,
-    }
-  }
-
-  return {
-    font: "Arial",
-    bodySize: 20,
-    nameSize: 32,
-    headingSize: 22,
-    line: 220,
-    margin: 720,
-    tabPosition: 9360,
-  }
-}
-
-function getDocxParagraph(line: string, templateId: TemplateId, lineIndex: number) {
-  const trimmed = line.trim()
-  const isUniversityLaw = templateId === "university-law"
-  const isOriginalCv = templateId === "original-cv"
-  const docxConfig = getDocxConfig(templateId)
-  const isName = (
-    isUniversityLaw && lineIndex === 0 && /^[A-Z][A-Z\s.'-]+$/.test(trimmed) && trimmed.length > 2
-  ) || (
-    isOriginalCv && lineIndex === 0 && trimmed.includes(", M.SC.")
-  )
-  const isContactLine = !isName && lineIndex <= 2 && (
-    trimmed.includes("@") ||
-    trimmed.startsWith("http") ||
-    trimmed.includes("linkedin.com") ||
-    trimmed.includes("github.com") ||
-    trimmed.includes(" | ")
-  )
-  const isHeading = /^[A-Z][A-Z\s&]+$/.test(trimmed) && trimmed.length > 2
-  const isBullet = trimmed.startsWith("- ")
-  const isProjectToolLine = trimmed.startsWith("Tools:")
-  const paragraphSpacingAfter = isHeading ? 18 : isName ? 10 : 4
-  const paragraphSpacingBefore = isHeading ? 45 : 0
-  const paragraphProps = [
-    `<w:spacing w:before="${paragraphSpacingBefore}" w:after="${paragraphSpacingAfter}" w:line="${docxConfig.line}" w:lineRule="auto"/>`,
-    isName ? '<w:jc w:val="center"/>' : "",
-    isContactLine && (isUniversityLaw || isOriginalCv) ? '<w:jc w:val="center"/>' : "",
-    isUniversityLaw && line.includes("\t") ? `<w:tabs><w:tab w:val="right" w:pos="${docxConfig.tabPosition}"/></w:tabs>` : "",
-    isOriginalCv && line.includes("\t") ? `<w:tabs><w:tab w:val="right" w:pos="${docxConfig.tabPosition}"/></w:tabs>` : "",
-    isBullet ? '<w:ind w:left="360" w:hanging="240"/>' : "",
-  ].join("")
-  const runProps = [
-    `<w:sz w:val="${isName ? docxConfig.nameSize : isHeading ? docxConfig.headingSize : isContactLine || isProjectToolLine ? docxConfig.bodySize - 1 : docxConfig.bodySize}"/><w:szCs w:val="${isName ? docxConfig.nameSize : isHeading ? docxConfig.headingSize : isContactLine || isProjectToolLine ? docxConfig.bodySize - 1 : docxConfig.bodySize}"/>`,
-    isName ? "<w:b/>" : "",
-    isHeading ? "<w:b/><w:u w:val=\"single\"/>" : "",
-    isProjectToolLine ? "<w:i/>" : "",
-  ].join("")
-  const bulletText = isBullet ? `• ${trimmed.slice(2)}` : line
-  const textRuns = bulletText.split("\t").map((part, index) => (
-    `${index > 0 ? "<w:tab/>" : ""}<w:t xml:space="preserve">${escapeXml(part)}</w:t>`
-  )).join("")
-
-  return `<w:p><w:pPr>${paragraphProps}</w:pPr><w:r><w:rPr>${runProps}</w:rPr>${textRuns}</w:r></w:p>`
-}
-
-function createDocxBlob(text: string, templateId: TemplateId) {
-  const paragraphs = text.split("\n").filter((line) => line.trim().length > 0).map((line, index) => {
-    return getDocxParagraph(line, templateId, index)
-  }).join("")
-  const docxConfig = getDocxConfig(templateId)
-  const margins = `<w:pgMar w:top="${docxConfig.margin}" w:right="${docxConfig.margin}" w:bottom="${docxConfig.margin}" w:left="${docxConfig.margin}" w:header="0" w:footer="0" w:gutter="0"/>`
-
-  return createZipBlob([
-    {
-      name: "[Content_Types].xml",
-      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`,
-    },
-    {
-      name: "_rels/.rels",
-      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`,
-    },
-    {
-      name: "word/_rels/document.xml.rels",
-      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
-    },
-    {
-      name: "word/document.xml",
-      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${paragraphs}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/>${margins}<w:cols w:space="720"/><w:docGrid w:linePitch="360"/></w:sectPr></w:body></w:document>`,
-    },
-    {
-      name: "word/styles.xml",
-      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="${docxConfig.font}" w:hAnsi="${docxConfig.font}" w:cs="${docxConfig.font}"/><w:sz w:val="${docxConfig.bodySize}"/><w:szCs w:val="${docxConfig.bodySize}"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="${docxConfig.line}" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults></w:styles>`,
-    },
-  ])
-}
-
-function mergeProjectsForFullPage(projects: ResumeProject[], profileProjects: ResumeProject[], hasSupplementalSections: boolean) {
-  const merged = [...projects]
-  const projectLimit = hasSupplementalSections ? 3 : 4
-  const highlightLimit = hasSupplementalSections ? 4 : 5
-
-  for (const project of profileProjects) {
-    const alreadyAdded = merged.some((item) => item.id === project.id || item.name === project.name)
-    if (!alreadyAdded) merged.push(project)
-    if (merged.length >= projectLimit) break
-  }
-
-  return merged.slice(0, projectLimit).map((project) => {
-    const profileProject = profileProjects.find((item) => item.id === project.id || item.name === project.name)
-    const highlights = project.highlights?.length ? project.highlights : profileProject?.highlights || []
-    const fallbackHighlights = [
-      project.description,
-      profileProject?.description,
-      "Organized project outputs into clear workflows, dashboards, or reports for practical review",
-      "Tested results for consistency, readability, and alignment with user or business requirements",
-    ].filter((item): item is string => Boolean(item?.trim()))
-
-    return {
-      ...profileProject,
-      ...project,
-      technologies: project.technologies?.length ? project.technologies : profileProject?.technologies || [],
-      highlights: Array.from(new Set([...highlights, ...fallbackHighlights])).slice(0, highlightLimit),
-    }
-  })
+function createResumeDocxBlob(resumeDocument: ResumeDocument, templateId: TemplateId) {
+  const docx = templateStyles[templateId].docx
+  return createDocxBlob(documentToDocxBody(resumeDocument, docx), docx)
 }
 
 function normalizeCompareText(value: string | undefined) {
@@ -553,566 +282,90 @@ function isGeneratedText(value: string | undefined, originalValues: string[]) {
   return !originalValues.some((originalValue) => normalizeCompareText(originalValue) === normalizedValue)
 }
 
-function getProfileSkills(profile: GeneratedResume["profile"]) {
-  return new Set(
-    Object.values(profile.skills)
-      .flat()
-      .map((skill) => normalizeCompareText(skill))
-      .filter(Boolean)
-  )
-}
-
-function buildDownloadText({
-  generatedResume,
-  tailoredSkills,
-  displayProjects,
-}: {
-  generatedResume: GeneratedResume
-  tailoredSkills: string[]
-  displayProjects: ResumeProject[]
-}) {
-  const profile = generatedResume.profile
-  const certificationLines = generatedResume.selectedCertifications.map(formatCertification)
-  const achievementLines = generatedResume.selectedAchievements.map((achievement) => `- ${achievement}`)
-
-  return [
-    `${profile.personalInfo.firstName} ${profile.personalInfo.lastName}`,
-    `${profile.personalInfo.email} | ${profile.personalInfo.phone} | ${profile.personalInfo.location}`,
-    [profile.personalInfo.linkedin, profile.personalInfo.github].filter(Boolean).join(" | "),
-    "",
-    "PROFESSIONAL SUMMARY",
-    generatedResume.improvedSummary || generatedResume.summary,
-    "",
-    "SKILLS",
-    `Relevant Skills: ${tailoredSkills.join(", ")}`,
-    "",
-    "PROFESSIONAL EXPERIENCE",
-    ...generatedResume.selectedExperience.flatMap((exp) => [
-      `${exp.position} | ${exp.company}, ${exp.location} | ${exp.startDate} - ${exp.endDate}`,
-      ...exp.description.map((bullet) => `- ${bullet}`),
-      "",
-    ]),
-    "PROJECTS",
-    ...displayProjects.flatMap((project) => [
-      `${project.name} | ${project.technologies.slice(0, 8).join(", ")}`,
-      ...project.highlights.map((highlight) => `- ${highlight}`),
-      "",
-    ]),
-    "EDUCATION",
-    ...profile.education.flatMap((edu) => [
-      `${edu.degree} in ${edu.field} | ${edu.institution} | ${edu.endDate}`,
-      edu.gpa ? `GPA: ${edu.gpa}` : "",
-    ]),
-    certificationLines.length ? "" : undefined,
-    certificationLines.length ? "CERTIFICATIONS" : undefined,
-    ...certificationLines,
-    achievementLines.length ? "" : undefined,
-    achievementLines.length ? "HONORS & ACHIEVEMENTS" : undefined,
-    ...achievementLines,
-  ].filter((line) => line !== undefined).join("\n").trim()
-}
-
-function buildUniversityLawDownloadText({
-  generatedResume,
-  tailoredSkills,
-  displayProjects,
-}: {
-  generatedResume: GeneratedResume
-  tailoredSkills: string[]
-  displayProjects: ResumeProject[]
-}) {
-  const profile = generatedResume.profile
-  const contact = [
-    profile.personalInfo.location,
-    profile.personalInfo.phone,
-    profile.personalInfo.email,
-  ].filter(Boolean).join(" | ")
-  const links = [
-    profile.personalInfo.linkedin,
-    profile.personalInfo.github,
-  ].filter(Boolean).join(" | ")
-  const certificationLines = generatedResume.selectedCertifications.map(formatCertification)
-  const achievementLines = generatedResume.selectedAchievements.map((achievement) => `- ${achievement}`)
-  const hasSupplementalSections = certificationLines.length > 0 || achievementLines.length > 0
-  const primaryExperience = generatedResume.selectedExperience.slice(0, 2)
-  const primaryProjects = displayProjects.slice(0, hasSupplementalSections ? 2 : 3)
-  const docxSkills = tailoredSkills.slice(0, hasSupplementalSections ? 22 : 28)
-  const compactSummary = compactDocxSummary(generatedResume.improvedSummary || generatedResume.summary)
-
-  return [
-    `${profile.personalInfo.firstName} ${profile.personalInfo.lastName}`.toUpperCase(),
-    contact,
-    links,
-    "",
-    "PROFILE",
-    compactSummary,
-    "",
-    "EDUCATION",
-    ...profile.education.flatMap((edu) => [
-      `${edu.institution}\t${edu.endDate}`,
-      `${edu.degree} in ${edu.field}${edu.gpa ? ` | GPA: ${edu.gpa}` : ""}`,
-    ]),
-    "EXPERIENCE",
-    ...primaryExperience.flatMap((exp) => [
-      `${exp.company}\t${exp.location}`,
-      `${exp.position}\t${exp.startDate} - ${exp.endDate}`,
-      ...exp.description.slice(0, 6).map((bullet) => `- ${bullet}`),
-    ]),
-    primaryProjects.length ? "PROJECTS" : "",
-    ...primaryProjects.flatMap((project) => [
-      `${project.name}\t${project.technologies.slice(0, 8).join(", ")}`,
-      ...project.highlights.slice(0, hasSupplementalSections ? 3 : 5).map((highlight) => `- ${highlight}`),
-    ]),
-    "SKILLS",
-    docxSkills.join(", "),
-    certificationLines.length ? "" : undefined,
-    certificationLines.length ? "CERTIFICATIONS" : undefined,
-    ...certificationLines,
-    achievementLines.length ? "" : undefined,
-    achievementLines.length ? "HONORS & ACHIEVEMENTS" : undefined,
-    ...achievementLines,
-  ].filter((line) => line !== undefined).join("\n").trim()
-}
-
-function compactDocxSummary(value: string) {
-  const sentences = value
-    .split(/(?<=[.!?])\s+/)
-    .map((sentence) => sentence.trim())
-    .filter(Boolean)
-
-  const compact = sentences.slice(0, 2).join(" ")
-  if (compact.length <= 420) return compact
-  return `${compact.slice(0, 417).trim()}...`
-}
-
-function buildOriginalCvDownloadText({
-  generatedResume,
-  tailoredSkills,
-  displayProjects,
-}: {
-  generatedResume: GeneratedResume
-  tailoredSkills: string[]
-  displayProjects: ResumeProject[]
-}) {
-  const profile = generatedResume.profile
-  const expertiseOptions = [
-    "Business Systems Analysis",
-    "Python & SQL Programming",
-    "Project Management",
-    "Data Analysis & Reporting",
-    "Database Management",
-    "Technical Documentation",
-    "Data Visualization",
-    "Cross-Functional Collaboration",
-    "Process Improvement",
-    "Stakeholder Communication",
-    "Requirements Gathering",
-    ...tailoredSkills.slice(0, 8),
-  ]
-  const certificationLines = generatedResume.selectedCertifications.map(formatCertification)
-  const achievementLines = generatedResume.selectedAchievements.map((achievement) => `- ${achievement}`)
-  const hasSupplementalSections = certificationLines.length > 0 || achievementLines.length > 0
-  const expertise = expertiseOptions
-    .filter((item, index, values) => values.findIndex((value) => normalizeCompareText(value) === normalizeCompareText(item)) === index)
-    .slice(0, hasSupplementalSections ? 15 : 18)
-  const projects = displayProjects.slice(0, hasSupplementalSections ? 3 : 4)
-
-  return [
-    `${profile.personalInfo.firstName} ${profile.personalInfo.lastName}, M.SC.`,
-    `${generatedResume.jobTitle !== "Target Role" ? generatedResume.jobTitle : "Business Analyst"} | Data Specialist | Data Analyst`,
-    `${profile.personalInfo.phone} | ${profile.personalInfo.location} | ${profile.personalInfo.email} | ${profile.personalInfo.linkedin}`,
-    "",
-    "PROFESSIONAL SUMMARY",
-    generatedResume.improvedSummary || generatedResume.summary,
-    "",
-    "AREAS OF EXPERTISE",
-    ...expertise.map((skill) => `- ${skill}`),
-    "",
-    "PROFESSIONAL EXPERIENCE",
-    ...generatedResume.selectedExperience.flatMap((exp) => [
-      `${exp.position}\t${exp.company}, ${exp.location}\t${exp.startDate} - ${exp.endDate}`,
-      ...exp.description.slice(0, 8).map((bullet) => `- ${bullet}`),
-      "",
-    ]),
-    "PROJECTS",
-    ...projects.flatMap((project) => [
-      project.name,
-      `Tools: ${project.technologies.slice(0, 10).join(", ")}.`,
-      ...project.highlights.slice(0, hasSupplementalSections && projects.length > 1 ? 3 : 5).map((highlight) => `- ${highlight}`),
-      "",
-    ]),
-    "EDUCATION",
-    ...profile.education.map((edu) => `${edu.degree} in ${edu.field}, ${edu.institution}${edu.gpa ? ` [${edu.gpa} GPA]` : ""}`),
-    "",
-    "SKILLS",
-    `Research Platforms: ${profile.skills.programming.join(", ")}`,
-    `Technology: ${[...profile.skills.visualization].join(", ")}`,
-    `Legal Skills: ${profile.skills.dataAnalysis.join(", ")}`,
-    `Practice Tools & Additional: ${[...profile.skills.databases, ...profile.skills.tools].join(", ")}`,
-    certificationLines.length ? "" : undefined,
-    certificationLines.length ? "CERTIFICATIONS" : undefined,
-    ...certificationLines,
-    achievementLines.length ? "" : undefined,
-    achievementLines.length ? "HONORS & ACHIEVEMENTS" : undefined,
-    ...achievementLines,
-  ].filter((line) => line !== undefined).join("\n").trim()
-}
-
-function formatCertification(cert: ResumeCertification) {
-  return [
-    cert.name,
-    cert.issuer,
-    cert.date,
-    cert.credentialId ? `Credential ID: ${cert.credentialId}` : "",
-  ].filter(Boolean).join(" | ")
-}
-
-function UniversitySection({ title, children }: { title: string; children: ReactNode }) {
+function TwoColumn({ left, right }: { left: ReactNode; right?: string }) {
   return (
-    <section className="mb-2.5" style={{ pageBreakInside: "avoid" }}>
-      <h2
-        className="font-bold uppercase underline underline-offset-2 text-gray-950"
-        style={{ fontSize: "11.2px", margin: "0 0 0.24em 0" }}
-      >
-        {title}
-      </h2>
-      {children}
-    </section>
-  )
-}
-
-function UniversityLawResume({
-  generatedResume,
-  tailoredSkills,
-  displayProjects,
-  isSummaryGenerated,
-  isSkillGenerated,
-  isExperienceBulletGenerated,
-  isProjectHighlightGenerated,
-}: {
-  generatedResume: GeneratedResume
-  tailoredSkills: string[]
-  displayProjects: ResumeProject[]
-  isSummaryGenerated: boolean
-  isSkillGenerated: (skill: string) => boolean
-  isExperienceBulletGenerated: (experienceId: string, bullet: string) => boolean
-  isProjectHighlightGenerated: (projectId: string, projectName: string, highlight: string) => boolean
-}) {
-  const profile = generatedResume.profile
-  const hasSupplementalSections = generatedResume.selectedCertifications.length > 0 || generatedResume.selectedAchievements.length > 0
-  const contact = [
-    profile.personalInfo.location,
-    profile.personalInfo.phone,
-    profile.personalInfo.email,
-  ].filter(Boolean).join(" | ")
-  const links = [
-    profile.personalInfo.linkedin,
-    profile.personalInfo.github,
-  ].filter(Boolean).join(" | ")
-
-  return (
-    <div
-      className="text-gray-950"
-      style={{ fontFamily: UNIVERSITY_LAW_FONT_FAMILY, fontSize: "10.95px", lineHeight: 1.24 }}
-    >
-      <header className="text-center mb-3.5" style={{ pageBreakInside: "avoid" }}>
-        <h1 className="font-bold uppercase" style={{ fontSize: "14px", margin: 0 }}>
-          {profile.personalInfo.firstName} {profile.personalInfo.lastName}
-        </h1>
-        <p className="text-gray-700" style={{ margin: "0.2em 0 0 0" }}>{contact}</p>
-        {links && <p className="text-gray-700" style={{ margin: "0.1em 0 0 0" }}>{links}</p>}
-      </header>
-
-      <UniversitySection title="Profile">
-        <p
-          className={cn("text-gray-800", isSummaryGenerated && "resume-preview-highlight")}
-          style={{ margin: 0 }}
-        >
-          {generatedResume.improvedSummary || generatedResume.summary}
-        </p>
-      </UniversitySection>
-
-      <UniversitySection title="Education">
-        {profile.education.map((edu) => (
-          <div key={edu.id} className="mb-2" style={{ pageBreakInside: "avoid" }}>
-            <div className="flex justify-between gap-4 font-bold">
-              <span>{edu.institution}</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span className="italic">{edu.degree} in {edu.field}</span>
-              <span className="whitespace-nowrap">{edu.endDate}</span>
-            </div>
-            {edu.gpa && <p style={{ margin: "0.1em 0 0 0" }}>GPA: {edu.gpa}</p>}
-          </div>
-        ))}
-      </UniversitySection>
-
-      <UniversitySection title="Experience">
-        {generatedResume.selectedExperience.map((exp) => (
-          <div key={exp.id} className="mb-2" style={{ pageBreakInside: "avoid" }}>
-            <div className="flex justify-between gap-4 font-bold">
-              <span>{exp.company}</span>
-              <span className="whitespace-nowrap font-normal">{exp.location}</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span className="italic">{exp.position}</span>
-              <span className="whitespace-nowrap">{exp.startDate} - {exp.endDate}</span>
-            </div>
-            <ul className="list-disc pl-5 text-gray-800" style={{ margin: "0.15em 0 0 0" }}>
-              {exp.description.slice(0, 8).map((bullet, index) => (
-                <li
-                  key={index}
-                  className={cn(isExperienceBulletGenerated(exp.id, bullet) && "resume-preview-highlight")}
-                  style={{ margin: "0.075em 0" }}
-                >
-                  {bullet}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </UniversitySection>
-
-      {displayProjects.length > 0 && (
-        <UniversitySection title="Projects">
-          {displayProjects.slice(0, 4).map((project) => (
-            <div key={project.id || project.name} className="mb-2" style={{ pageBreakInside: "avoid" }}>
-              <div className="flex justify-between gap-4 font-bold">
-                <span>{project.name}</span>
-                <span className="text-right font-normal">{project.technologies.slice(0, 8).join(", ")}</span>
-              </div>
-              {project.description && (
-                <p className="text-gray-800" style={{ margin: "0.08em 0 0 0" }}>
-                  {project.description}
-                </p>
-              )}
-              <ul className="list-disc pl-5 text-gray-800" style={{ margin: "0.15em 0 0 0" }}>
-                {project.highlights.slice(0, hasSupplementalSections && displayProjects.length > 2 ? 3 : 5).map((highlight, index) => (
-                  <li
-                    key={index}
-                    className={cn(isProjectHighlightGenerated(project.id, project.name, highlight) && "resume-preview-highlight")}
-                    style={{ margin: "0.07em 0" }}
-                  >
-                    {highlight}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </UniversitySection>
-      )}
-
-      <UniversitySection title="Skills">
-        <p style={{ margin: 0 }}>
-          {tailoredSkills.map((skill, index) => (
-            <span key={`${skill}-${index}`}>
-              <span className={cn(isSkillGenerated(skill) && "resume-preview-highlight")}>{skill}</span>
-              {index < tailoredSkills.length - 1 ? ", " : ""}
-            </span>
-          ))}
-        </p>
-      </UniversitySection>
-
-      {generatedResume.selectedCertifications.length > 0 && (
-        <UniversitySection title="Certifications">
-          {generatedResume.selectedCertifications.map((cert) => (
-            <p key={cert.id || cert.name} style={{ margin: "0.05em 0" }}>
-              {formatCertification(cert)}
-            </p>
-          ))}
-        </UniversitySection>
-      )}
-
-      {generatedResume.selectedAchievements.length > 0 && (
-        <UniversitySection title="Honors & Achievements">
-          <ul className="list-disc pl-5 text-gray-800" style={{ margin: "0.12em 0 0 0" }}>
-            {generatedResume.selectedAchievements.map((achievement) => (
-              <li key={achievement} style={{ margin: "0.06em 0" }}>{achievement}</li>
-            ))}
-          </ul>
-        </UniversitySection>
-      )}
+    <div className="flex justify-between items-baseline gap-6">
+      <span className="min-w-0">{left}</span>
+      {right && <span className="whitespace-nowrap shrink-0">{right}</span>}
     </div>
   )
 }
 
-function DenseSection({ title, children }: { title: string; children: ReactNode }) {
+// "Activities:", "Languages:" etc. with a hanging value column, as in the sample.
+function LabeledRows({ rows }: { rows: LabeledRow[] }) {
   return (
-    <section className="mb-1.5" style={{ pageBreakInside: "avoid" }}>
-      <h2
-        className="uppercase text-gray-700 border-b border-gray-600"
-        style={{ fontSize: "12px", lineHeight: 1.1, margin: "0 0 0.18em 0" }}
-      >
-        {title}
-      </h2>
-      {children}
-    </section>
+    <>
+      {rows.map((row) => (
+        <div key={row.label} className="grid" style={{ gridTemplateColumns: "7.6em minmax(0, 1fr)" }}>
+          <span>{row.label}:</span>
+          <span>{row.value}</span>
+        </div>
+      ))}
+    </>
   )
 }
 
-function OriginalCvResume({
-  generatedResume,
-  tailoredSkills,
-  displayProjects,
-  isSummaryGenerated,
-  isSkillGenerated,
-  isExperienceBulletGenerated,
-  isProjectHighlightGenerated,
+function LoyolaResume({
+  resumeDocument,
+  style,
+  isBulletGenerated,
 }: {
-  generatedResume: GeneratedResume
-  tailoredSkills: string[]
-  displayProjects: ResumeProject[]
-  isSummaryGenerated: boolean
-  isSkillGenerated: (skill: string) => boolean
-  isExperienceBulletGenerated: (experienceId: string, bullet: string) => boolean
-  isProjectHighlightGenerated: (projectId: string, projectName: string, highlight: string) => boolean
+  resumeDocument: ResumeDocument
+  style: TemplateStyle
+  isBulletGenerated: (experienceId: string, bullet: string) => boolean
 }) {
-  const profile = generatedResume.profile
-  const hasSupplementalSections = generatedResume.selectedCertifications.length > 0 || generatedResume.selectedAchievements.length > 0
-  const expertise = [
-    "Business Systems Analysis",
-    "Python & SQL Programming",
-    "Project Management",
-    "Data Analysis & Reporting",
-    "Database Management",
-    "Technical Documentation",
-    "Data Visualization",
-    "Cross-Functional Collaboration",
-    "Process Improvement",
-    "Stakeholder Communication",
-    "Requirements Gathering",
-    ...tailoredSkills.slice(0, 8),
-  ].filter((item, index, values) => values.findIndex((value) => normalizeCompareText(value) === normalizeCompareText(item)) === index).slice(0, hasSupplementalSections ? 15 : 18)
-  const projects = displayProjects.slice(0, hasSupplementalSections ? 3 : 4)
-
   return (
     <div
       className="text-gray-950"
-      style={{ fontFamily: ORIGINAL_CV_FONT_FAMILY, fontSize: "10.9px", lineHeight: 1.16 }}
+      style={{ fontFamily: style.fontFamily, fontSize: `${style.fontSize}px`, lineHeight: style.lineHeight }}
     >
-      <header className="text-center mb-2" style={{ pageBreakInside: "avoid" }}>
-        <h1 className="font-bold tracking-wide" style={{ fontSize: "20px", lineHeight: 1, margin: 0 }}>
-          {profile.personalInfo.firstName} {profile.personalInfo.lastName}, M.SC.
+      <header className={style.header} style={{ pageBreakInside: "avoid" }}>
+        <h1 className={style.name} style={{ fontSize: `${style.nameSize}px`, lineHeight: 1.15, margin: 0 }}>
+          {resumeDocument.name}
         </h1>
-        <p className="text-gray-600" style={{ fontSize: "13px", margin: "0.15em 0 0 0" }}>
-          {generatedResume.jobTitle !== "Target Role" ? generatedResume.jobTitle : "Business Analyst"} | Data Specialist | Data Analyst
-        </p>
-        <p className="text-gray-900" style={{ fontSize: "10.5px", margin: "0.2em 0 0 0" }}>
-          {profile.personalInfo.phone} | {profile.personalInfo.location} | {profile.personalInfo.email} | {profile.personalInfo.linkedin}
-        </p>
+        {resumeDocument.contact && (
+          <p className={style.contact} style={{ margin: "0.2em 0 0 0" }}>{resumeDocument.contact}</p>
+        )}
       </header>
 
-      <DenseSection title="Professional Summary">
-        <p
-          className={cn("text-gray-900", isSummaryGenerated && "resume-preview-highlight")}
-          style={{ margin: 0 }}
-        >
-          {generatedResume.improvedSummary || generatedResume.summary}
-        </p>
-      </DenseSection>
+      {resumeDocument.sections.map((section) => (
+        <section key={section.title} className={style.sectionGap}>
+          <h2 className={style.section} style={{ fontSize: `${style.fontSize}px`, margin: "0 0 0.15em 0" }}>
+            {section.title}
+          </h2>
 
-      <DenseSection title="Areas of Expertise">
-        <ul
-          className="grid grid-cols-3 gap-x-5 list-disc text-gray-950"
-          style={{ margin: "0 0 0 1.4em", padding: 0 }}
-        >
-          {expertise.map((skill) => (
-            <li key={skill} className={cn(isSkillGenerated(skill) && "resume-preview-highlight")} style={{ margin: "0.04em 0" }}>
-              {skill}
-            </li>
+          {section.kind === "lines" && section.lines.map((line, index) => (
+            <p key={index} style={{ margin: 0 }}>{line}</p>
           ))}
-        </ul>
-      </DenseSection>
 
-      <DenseSection title="Professional Experience">
-        {generatedResume.selectedExperience.map((exp) => (
-          <div key={exp.id} className="mb-1.5" style={{ pageBreakInside: "avoid" }}>
-            <div style={{ fontSize: "12.2px", lineHeight: 1.1 }}>
-              <span className="font-bold">{exp.position}</span>
-              <span>|{exp.company}, {exp.location} </span>
-              <span className="text-gray-600">{exp.startDate} - {exp.endDate}</span>
+          {section.kind === "rows" && <LabeledRows rows={section.rows} />}
+
+          {section.kind === "education" && section.entries.map((entry, index) => (
+            <div key={entry.id || index} style={{ marginTop: index ? "0.9em" : 0, pageBreakInside: "avoid" }}>
+              <TwoColumn left={<strong>{entry.institution}</strong>} right={entry.location} />
+              <TwoColumn left={<em>{entry.degreeLine}</em>} right={entry.date} />
+              <LabeledRows rows={entry.rows} />
             </div>
-            <ul className="list-disc pl-6 text-gray-900" style={{ margin: "0.16em 0 0 0" }}>
-              {exp.description.slice(0, 8).map((bullet, index) => (
-                <li
-                  key={index}
-                  className={cn(isExperienceBulletGenerated(exp.id, bullet) && "resume-preview-highlight")}
-                  style={{ margin: "0.06em 0" }}
-                >
-                  {bullet}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </DenseSection>
+          ))}
 
-      {projects.length > 0 && (
-        <DenseSection title="Projects">
-          {projects.map((project) => (
-            <div key={project.id || project.name} className="mb-1" style={{ pageBreakInside: "avoid" }}>
-              <p className="font-bold" style={{ fontSize: "11.8px", margin: 0 }}>{project.name}</p>
-              <p style={{ margin: "0.04em 0 0 0" }}>
-                Tools: {project.technologies.slice(0, 10).join(", ")}.
-              </p>
-              <ul className="list-disc pl-6 text-gray-900" style={{ margin: "0.1em 0 0 0" }}>
-                {project.highlights.slice(0, hasSupplementalSections && projects.length > 1 ? 3 : 5).map((highlight, index) => (
+          {section.kind === "experience" && section.entries.map((entry, index) => (
+            <div key={entry.id || index} style={{ marginTop: index ? "0.9em" : 0, pageBreakInside: "avoid" }}>
+              <TwoColumn left={<strong>{entry.company}</strong>} right={entry.location} />
+              <TwoColumn left={<em>{entry.position}</em>} right={entry.dates} />
+              <ul className="list-disc" style={{ margin: "0.05em 0 0 0", paddingLeft: "3em" }}>
+                {entry.bullets.map((bullet, bulletIndex) => (
                   <li
-                    key={index}
-                    className={cn(isProjectHighlightGenerated(project.id, project.name, highlight) && "resume-preview-highlight")}
-                    style={{ margin: "0.04em 0" }}
+                    key={bulletIndex}
+                    className={cn(isBulletGenerated(entry.id, bullet) && "resume-preview-highlight")}
                   >
-                    {highlight}
+                    {bullet}
                   </li>
                 ))}
               </ul>
             </div>
           ))}
-        </DenseSection>
-      )}
-
-      <DenseSection title="Education">
-        {profile.education.map((edu) => (
-          <p key={edu.id} style={{ margin: "0.05em 0" }}>
-            <strong>{edu.degree} in {edu.field}</strong>, {edu.institution}{edu.gpa ? ` [${edu.gpa} GPA]` : ""}
-          </p>
-        ))}
-      </DenseSection>
-
-      <DenseSection title="Skills">
-        <p style={{ margin: "0.04em 0" }}>
-          <strong>Research Platforms:</strong> {profile.skills.programming.join(", ")}
-        </p>
-        <p style={{ margin: "0.04em 0" }}>
-          <strong>Technology:</strong> {[...profile.skills.visualization].join(", ")}
-        </p>
-        <p style={{ margin: "0.04em 0" }}>
-          <strong>Legal Skills:</strong> {profile.skills.dataAnalysis.join(", ")}
-        </p>
-        <p style={{ margin: "0.04em 0" }}>
-          <strong>Practice Tools & Additional:</strong> {[...profile.skills.databases, ...profile.skills.tools].join(", ")}
-        </p>
-      </DenseSection>
-
-      {generatedResume.selectedCertifications.length > 0 && (
-        <DenseSection title="Certifications">
-          {generatedResume.selectedCertifications.map((cert) => (
-            <p key={cert.id || cert.name} style={{ margin: "0.04em 0" }}>
-              {formatCertification(cert)}
-            </p>
-          ))}
-        </DenseSection>
-      )}
-
-      {generatedResume.selectedAchievements.length > 0 && (
-        <DenseSection title="Honors & Achievements">
-          <ul className="list-disc pl-6 text-gray-900" style={{ margin: "0.08em 0 0 0" }}>
-            {generatedResume.selectedAchievements.map((achievement) => (
-              <li key={achievement} style={{ margin: "0.04em 0" }}>{achievement}</li>
-            ))}
-          </ul>
-        </DenseSection>
-      )}
+        </section>
+      ))}
     </div>
   )
 }
@@ -1139,7 +392,9 @@ export default function ResumePreviewPage() {
   }, [])
   const [isEditMode, setIsEditMode] = useState(false)
   const [generatedResume, setGeneratedResume] = useState<GeneratedResume>(fallbackResume)
-  const [selectedTemplateId, setSelectedTemplateId] = useState<TemplateId>(getTemplateId(fallbackResume.template))
+  // Until the student generates a resume, the preview shows the demo student.
+  const [isSampleResume, setIsSampleResume] = useState(true)
+  const [selectedTemplateId, setSelectedTemplateId] = useState<TemplateId>(fallbackTemplateId)
 
   useEffect(() => {
     const savedResume = loadLatestGeneratedResume()
@@ -1147,53 +402,24 @@ export default function ResumePreviewPage() {
 
     const normalizedResume = normalizeGeneratedResume(savedResume)
     setGeneratedResume(normalizedResume)
-    setSelectedTemplateId(getTemplateId(normalizedResume.template))
+    setIsSampleResume(false)
   }, [])
 
   const profile = generatedResume.profile
-  const tailoredSkills = generatedResume.tailoredSkills?.length
-    ? generatedResume.tailoredSkills
-    : [
-        ...profile.skills.programming,
-        ...profile.skills.dataAnalysis,
-        ...profile.skills.visualization,
-        ...profile.skills.cloud,
-        ...profile.skills.tools,
-      ]
   const resumeTemplate = templateStyles[selectedTemplateId]
-  const isCompact = selectedTemplateId === "compact"
-  const isUniversityLaw = selectedTemplateId === "university-law"
-  const isOriginalCv = selectedTemplateId === "original-cv"
-  const hasSupplementalSections = generatedResume.selectedCertifications.length > 0 || generatedResume.selectedAchievements.length > 0
-  const displayProjects = mergeProjectsForFullPage(generatedResume.selectedProjects, profile.projects, hasSupplementalSections)
-  const downloadText = isOriginalCv
-    ? buildOriginalCvDownloadText({ generatedResume, tailoredSkills, displayProjects })
-    : isUniversityLaw
-    ? buildUniversityLawDownloadText({ generatedResume, tailoredSkills, displayProjects })
-    : buildDownloadText({ generatedResume, tailoredSkills, displayProjects })
+  const resumeDocument = buildResumeDocument(generatedResume)
+  const downloadText = documentToText(resumeDocument)
   const fileBaseName = sanitizeFilename(`${profile.personalInfo.firstName}_${profile.personalInfo.lastName}_resume`) || "resume"
   const screenZoomScale = (zoom / 100) * containerScale
-  const profileSkillSet = getProfileSkills(profile)
-  const isSummaryGenerated = isGeneratedText(generatedResume.improvedSummary || generatedResume.summary, [
-    profile.personalInfo.summary,
-  ])
-  const isSkillGenerated = (skill: string) => !profileSkillSet.has(normalizeCompareText(skill))
   const isExperienceBulletGenerated = (experienceId: string, bullet: string) => {
     const profileExperience = profile.experience.find((experience) => experience.id === experienceId)
     return isGeneratedText(bullet, profileExperience?.description || [])
   }
-  const isProjectHighlightGenerated = (projectId: string, projectName: string, highlight: string) => {
-    const profileProject = profile.projects.find((project) => project.id === projectId || project.name === projectName)
-    return isGeneratedText(
-      highlight,
-      [profileProject?.description, ...(profileProject?.highlights || [])].filter(Boolean) as string[]
-    )
-  }
   const changeHighlights = generatedResume.changeHighlights?.length
     ? generatedResume.changeHighlights
     : [
-        isSummaryGenerated ? "Rewrote the professional summary for the target job." : "",
-        "Reordered and tailored resume content for ATS relevance.",
+        "Formatted in the Loyola Law resume layout.",
+        "Reordered and tailored experience bullets for ATS relevance.",
         generatedResume.matchedKeywords.length
           ? `Added or emphasized keywords: ${generatedResume.matchedKeywords.slice(0, 5).join(", ")}.`
           : "",
@@ -1216,22 +442,29 @@ export default function ResumePreviewPage() {
         return
       }
 
-      // Iterate width compensation + height measurement to a fixed point here,
-      // synchronously, instead of looping through React state updates.
       // Scale down when content overflows the page, and up (capped, so type
       // stays a normal size) when content runs short, so the page is filled.
+      // Content is laid out at width 100/scale %, so a larger scale narrows the
+      // column, text wraps more, and content grows taller. A fixed-point loop
+      // can stop on a scale that overflows, so binary-search for the largest
+      // scale whose scaled height still fits the page.
       const MAX_FILL_SCALE = 1.18
-      let scale = 1
-      for (let iteration = 0; iteration < 5; iteration += 1) {
+      const MIN_SCALE = 0.3
+      const fits = (scale: number) => {
         contentNode.style.width = `${100 / scale}%`
-        const contentHeight = contentNode.scrollHeight
-        if (contentHeight <= 0) break
-        const nextScale = Math.min(MAX_FILL_SCALE, availableHeight / contentHeight)
-        if (Math.abs(nextScale - scale) <= 0.005) {
-          scale = nextScale
-          break
+        return contentNode.scrollHeight * scale <= availableHeight
+      }
+
+      let scale = MAX_FILL_SCALE
+      if (!fits(MAX_FILL_SCALE)) {
+        let low = MIN_SCALE
+        let high = MAX_FILL_SCALE
+        for (let iteration = 0; iteration < 14; iteration += 1) {
+          const mid = (low + high) / 2
+          if (fits(mid)) low = mid
+          else high = mid
         }
-        scale = nextScale
+        scale = low
       }
 
       contentNode.style.width = `${100 / scale}%`
@@ -1240,15 +473,21 @@ export default function ResumePreviewPage() {
 
     updateFitScale()
     const animationFrame = window.requestAnimationFrame(updateFitScale)
-    return () => window.cancelAnimationFrame(animationFrame)
-  }, [displayProjects, generatedResume, selectedTemplateId])
+    // Web fonts change line widths; re-fit once they have loaded.
+    let cancelled = false
+    document.fonts?.ready.then(() => {
+      if (!cancelled) updateFitScale()
+    })
+    return () => {
+      cancelled = true
+      window.cancelAnimationFrame(animationFrame)
+    }
+  }, [generatedResume, selectedTemplateId])
 
   const handleDownloadPDF = async () => {
     const resumeNode = resumePrintRef.current
-    const resumeTemplateId = getTemplateId(generatedResume.template)
-
-    if (!resumeNode || selectedTemplateId !== resumeTemplateId) {
-      toast.error("Template mismatch detected. Please reopen the resume preview and try again.")
+    if (!resumeNode) {
+      toast.error("The preview is not ready yet. Please try again.")
       return
     }
 
@@ -1261,7 +500,7 @@ export default function ResumePreviewPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          html: buildResumePrintHtml(resumeNode, fileBaseName, { forServer: true }),
+          html: buildPrintHtml(resumeNode, fileBaseName, { forServer: true }),
           fileName: fileBaseName,
         }),
       })
@@ -1273,13 +512,13 @@ export default function ResumePreviewPage() {
       }
 
       // Fallback: browser print dialog (works without a local Chrome/Edge).
-      const didOpenPrintWindow = openResumePrintWindow(resumeNode, fileBaseName)
+      const didOpenPrintWindow = openPrintWindow(resumeNode, fileBaseName)
       if (didOpenPrintWindow) {
         toast.success("Print dialog opened. Choose Save as PDF.", { id: "resume-pdf" })
       }
     } catch (error) {
       console.error("PDF generation failed", error)
-      const didOpenPrintWindow = openResumePrintWindow(resumeNode, fileBaseName)
+      const didOpenPrintWindow = openPrintWindow(resumeNode, fileBaseName)
       if (didOpenPrintWindow) {
         toast.success("Print dialog opened. Choose Save as PDF.", { id: "resume-pdf" })
       } else {
@@ -1289,13 +528,32 @@ export default function ResumePreviewPage() {
   }
 
   const handleDownloadDOCX = () => {
-    downloadBlob(createDocxBlob(downloadText, selectedTemplateId), `${fileBaseName}.docx`)
+    downloadBlob(createResumeDocxBlob(resumeDocument, selectedTemplateId), `${fileBaseName}.docx`)
     toast.success("DOCX downloaded")
   }
 
   const handleCopyResume = async () => {
     await navigator.clipboard.writeText(downloadText)
     toast.success("Resume copied to clipboard")
+  }
+
+  // Missing keywords the student has confirmed they genuinely have. They are
+  // added to the master profile, never invented into the resume text.
+  const [selectedMissing, setSelectedMissing] = useState<string[]>([])
+  const [confirmSkillsOpen, setConfirmSkillsOpen] = useState(false)
+  const toggleMissing = (keyword: string) =>
+    setSelectedMissing((current) =>
+      current.includes(keyword) ? current.filter((item) => item !== keyword) : [...current, keyword]
+    )
+  const handleAddSkills = () => {
+    const { added } = addSkillsToMasterProfile(selectedMissing)
+    setConfirmSkillsOpen(false)
+    setSelectedMissing([])
+    toast.success(
+      added.length
+        ? `Added ${added.length} to your profile. Generate again to include ${added.length === 1 ? "it" : "them"}.`
+        : "Those are already in your profile."
+    )
   }
 
   const [coverLetter, setCoverLetter] = useState("")
@@ -1345,7 +603,13 @@ export default function ResumePreviewPage() {
   return (
     <AppLayout title="Resume Preview" subtitle="Review and download your generated resume">
       <div className="max-w-7xl mx-auto">
-        {!generatedResume.modelUsed && (
+        {isSampleResume && (
+          <div className="mb-4 rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-foreground">
+            <span className="font-semibold">Sample resume:</span> a fictional Loyola J.D. student in the official Loyola Law
+            format. Add your details in Profile Knowledge Base, then generate your own in Resume Builder.
+          </div>
+        )}
+        {!isSampleResume && !generatedResume.modelUsed && (
           <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
             <span className="font-semibold">Basic mode:</span> this resume was built by the local generator because the AI
             providers were unavailable. Quality is reduced — go back to the builder and regenerate to retry with AI.
@@ -1357,7 +621,19 @@ export default function ResumePreviewPage() {
             <AnimatedCard hover={false} className="p-4">
               {/* Zoom Controls */}
               <div className="flex items-center justify-between mb-4">
-                  <span className="text-sm text-muted-foreground">Preview</span>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-sm text-muted-foreground shrink-0">Template</span>
+                  <Select value={selectedTemplateId} onValueChange={(value) => setSelectedTemplateId(value as TemplateId)}>
+                    <SelectTrigger size="sm" className="w-56 max-w-full" aria-label="Resume template">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(templateLabels) as TemplateId[]).map((templateId) => (
+                        <SelectItem key={templateId} value={templateId}>{templateLabels[templateId]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="flex items-center gap-2">
                   <Button variant="ghost" size="icon" onClick={handleCopyResume}>
                     <Copy className="h-4 w-4" />
@@ -1402,7 +678,7 @@ export default function ResumePreviewPage() {
                   className={cn(
                     "resume-print-page",
                     resumeTemplate.body,
-                    isCompact ? "px-6 py-5" : isUniversityLaw ? "px-9 py-7" : isOriginalCv ? "px-10 py-5" : "px-7 py-6",
+                    resumeTemplate.page,
                     isEditMode && "outline outline-2 outline-dashed outline-primary/50 cursor-text"
                   )}
                   style={{
@@ -1425,179 +701,11 @@ export default function ResumePreviewPage() {
                       transformOrigin: "top left",
                     }}
                   >
-                  {isOriginalCv ? (
-                    <OriginalCvResume
-                      generatedResume={generatedResume}
-                      tailoredSkills={tailoredSkills}
-                      displayProjects={displayProjects}
-                      isSummaryGenerated={isSummaryGenerated}
-                      isSkillGenerated={isSkillGenerated}
-                      isExperienceBulletGenerated={isExperienceBulletGenerated}
-                      isProjectHighlightGenerated={isProjectHighlightGenerated}
-                    />
-                  ) : isUniversityLaw ? (
-                    <UniversityLawResume
-                      generatedResume={generatedResume}
-                      tailoredSkills={tailoredSkills}
-                      displayProjects={displayProjects}
-                      isSummaryGenerated={isSummaryGenerated}
-                      isSkillGenerated={isSkillGenerated}
-                      isExperienceBulletGenerated={isExperienceBulletGenerated}
-                      isProjectHighlightGenerated={isProjectHighlightGenerated}
-                    />
-                  ) : (
-                    <>
-                  {/* Header */}
-                  <div className={resumeTemplate.header} style={{ pageBreakInside: "avoid" }}>
-                    <h1 className={cn("text-2xl", resumeTemplate.name, selectedTemplateId === "executive" && "uppercase")} style={{ fontSize: "24px", margin: "0 0 0.3em 0" }}>
-                      {profile.personalInfo.firstName} {profile.personalInfo.lastName}
-                    </h1>
-                    {selectedTemplateId === "executive" && <div className="w-20 h-px bg-gray-800 mx-auto my-1" style={{ margin: "0.2em auto" }} />}
-                    <p className={cn("mt-1", resumeTemplate.contact)} style={{ fontSize: "11px", margin: "0.2em 0 0 0" }}>
-                      {profile.personalInfo.email} | {profile.personalInfo.phone} | {profile.personalInfo.location}
-                    </p>
-                    <p className={resumeTemplate.contact} style={{ fontSize: "11px", margin: "0.1em 0 0 0" }}>
-                      {[profile.personalInfo.linkedin, profile.personalInfo.github].filter(Boolean).join(" | ")}
-                    </p>
-                  </div>
-
-                  {/* Professional Summary */}
-                  <div className={isCompact ? "mb-1.5" : "mb-2.5"}>
-                    <h2 className={cn("text-sm font-bold pb-1 mb-1.5", resumeTemplate.section)}>
-                      Professional Summary
-                    </h2>
-                    <p
-                      className={cn("text-gray-700 leading-relaxed", isSummaryGenerated && "resume-preview-highlight")}
-                      style={{ fontSize: "11px", margin: 0 }}
-                    >
-                      {generatedResume.improvedSummary || generatedResume.summary}
-                    </p>
-                  </div>
-
-                  {/* Skills */}
-                  <div className={isCompact ? "mb-1.5" : "mb-2.5"}>
-                    <h2 className={cn("text-sm font-bold pb-1 mb-1.5", resumeTemplate.section)}>
-                      Skills
-                    </h2>
-                    <div className="text-gray-700" style={{ fontSize: "11px", margin: 0 }}>
-                      <p style={{ margin: 0 }}>
-                        <strong>Relevant Skills:</strong>{" "}
-                        {tailoredSkills.map((skill, index) => (
-                          <span key={`${skill}-${index}`}>
-                            <span className={cn(isSkillGenerated(skill) && "resume-preview-highlight")}>{skill}</span>
-                            {index < tailoredSkills.length - 1 ? ", " : ""}
-                          </span>
-                        ))}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Experience */}
-                  <div className={isCompact ? "mb-1.5" : "mb-2.5"}>
-                    <h2 className={cn("text-sm font-bold pb-1 mb-1.5", resumeTemplate.section)}>
-                      Professional Experience
-                    </h2>
-                    {generatedResume.selectedExperience.map((exp) => (
-                      <div key={exp.id} className={isCompact ? "mb-1.5" : "mb-2"} style={{ pageBreakInside: "avoid" }}>
-                        <div className="flex justify-between items-baseline gap-4">
-                          <h3 className={resumeTemplate.itemTitle} style={{ fontSize: "12px", margin: 0 }}>{exp.position}</h3>
-                          <span className="text-gray-600 whitespace-nowrap" style={{ fontSize: "10px", margin: 0 }}>
-                            {exp.startDate} - {exp.endDate}
-                          </span>
-                        </div>
-                        <p className="text-gray-700 italic" style={{ fontSize: "11px", margin: "0.2em 0 0 0" }}>
-                          {exp.company}, {exp.location}
-                        </p>
-                        <ul className={cn("list-disc pl-5 text-gray-700", isCompact ? "mt-0.5" : "mt-0.5")} style={{ fontSize: "11px", margin: "0.3em 0 0 0" }}>
-                          {exp.description.map((bullet, idx) => (
-                            <li
-                              key={idx}
-                              className={cn(isExperienceBulletGenerated(exp.id, bullet) && "resume-preview-highlight")}
-                              style={{ margin: "0.15em 0", pageBreakInside: "avoid" }}
-                            >
-                              {bullet}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Projects */}
-                  <div className={isCompact ? "mb-1.5" : "mb-2.5"}>
-                    <h2 className={cn("text-sm font-bold pb-1 mb-1.5", resumeTemplate.section)}>
-                      Projects
-                    </h2>
-                    {displayProjects.map((project) => (
-                      <div key={project.id} className={isCompact ? "mb-1.5" : "mb-2"} style={{ pageBreakInside: "avoid" }}>
-                        <div className="flex justify-between items-baseline gap-4">
-                          <h3 className={resumeTemplate.itemTitle} style={{ fontSize: "12px", margin: 0 }}>{project.name}</h3>
-                          <span className="text-gray-600 text-right" style={{ fontSize: "10px", margin: 0 }}>
-                            {project.technologies.slice(0, 5).join(", ")}
-                          </span>
-                        </div>
-                        <ul className="list-disc pl-5 text-gray-700" style={{ fontSize: "11px", margin: "0.3em 0 0 0" }}>
-                          {project.highlights.map((highlight, idx) => (
-                            <li
-                              key={idx}
-                              className={cn(isProjectHighlightGenerated(project.id, project.name, highlight) && "resume-preview-highlight")}
-                              style={{ margin: "0.15em 0", pageBreakInside: "avoid" }}
-                            >
-                              {highlight}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Education */}
-                  <div className={isCompact ? "mb-1.5" : "mb-2.5"}>
-                    <h2 className={cn("text-sm font-bold pb-1 mb-1.5", resumeTemplate.section)}>
-                      Education
-                    </h2>
-                    {profile.education.map((edu) => (
-                      <div key={edu.id} className="mb-1" style={{ pageBreakInside: "avoid" }}>
-                        <div className="flex justify-between items-baseline gap-4">
-                          <h3 className={resumeTemplate.itemTitle} style={{ fontSize: "12px", margin: 0 }}>{edu.degree} in {edu.field}</h3>
-                          <span className="text-gray-600 whitespace-nowrap" style={{ fontSize: "10px", margin: 0 }}>
-                            {edu.endDate}
-                          </span>
-                        </div>
-                        <p className="text-gray-700" style={{ fontSize: "11px", margin: "0.15em 0 0 0" }}>
-                          {edu.institution} | GPA: {edu.gpa}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-
-                  {generatedResume.selectedCertifications.length > 0 && (
-                    <div className={isCompact ? "mb-1.5" : "mb-2.5"}>
-                      <h2 className={cn("text-sm font-bold pb-1 mb-1.5", resumeTemplate.section)}>
-                        Certifications
-                      </h2>
-                      {generatedResume.selectedCertifications.map((cert) => (
-                        <p key={cert.id || cert.name} className="text-gray-700" style={{ fontSize: "11px", margin: "0.15em 0" }}>
-                          {formatCertification(cert)}
-                        </p>
-                      ))}
-                    </div>
-                  )}
-
-                  {generatedResume.selectedAchievements.length > 0 && (
-                    <div className={isCompact ? "mb-1.5" : "mb-2.5"}>
-                      <h2 className={cn("text-sm font-bold pb-1 mb-1.5", resumeTemplate.section)}>
-                        Honors & Achievements
-                      </h2>
-                      <ul className="list-disc pl-5 text-gray-700" style={{ fontSize: "11px", margin: "0.2em 0 0 0" }}>
-                        {generatedResume.selectedAchievements.map((achievement) => (
-                          <li key={achievement} style={{ margin: "0.12em 0" }}>{achievement}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                    </>
-                  )}
+                  <LoyolaResume
+                    resumeDocument={resumeDocument}
+                    style={resumeTemplate}
+                    isBulletGenerated={isExperienceBulletGenerated}
+                  />
                   </div>
                 </div>
               </motion.div>
@@ -1612,7 +720,7 @@ export default function ResumePreviewPage() {
               <div className="flex flex-col items-center text-center">
                 <AtsScoreCircle score={generatedResume.atsScore} size="lg" />
                 <p className="text-sm text-muted-foreground mt-3">
-                  Your resume is highly optimized for ATS systems
+                  {atsScoreMessage(generatedResume.atsScore)}
                 </p>
               </div>
             </AnimatedCard>
@@ -1643,6 +751,9 @@ export default function ResumePreviewPage() {
                 <AlertCircle className="h-5 w-5 text-[#f59e0b]" />
                 Missing From Profile
               </h3>
+              <p className="text-xs text-muted-foreground mb-3">
+                Keywords in the job description that your profile does not mention. Add only the ones that are genuinely true of you.
+              </p>
               <div className="flex flex-wrap gap-2">
                 {generatedResume.missingKeywords.map((keyword, index) => (
                   <motion.div
@@ -1651,10 +762,28 @@ export default function ResumePreviewPage() {
                     animate={{ scale: 1 }}
                     transition={{ delay: 0.4 + index * 0.05 }}
                   >
-                    <Badge className="bg-[#f59e0b]/10 text-[#f59e0b]">{keyword}</Badge>
+                    <button type="button" onClick={() => toggleMissing(keyword)} aria-pressed={selectedMissing.includes(keyword)}>
+                      <Badge
+                        className={cn(
+                          "cursor-pointer transition-colors",
+                          selectedMissing.includes(keyword)
+                            ? "bg-[#10b981]/15 text-[#10b981] ring-1 ring-[#10b981]/40"
+                            : "bg-[#f59e0b]/10 text-[#f59e0b] hover:bg-[#f59e0b]/20"
+                        )}
+                      >
+                        {selectedMissing.includes(keyword) && <Check className="h-3 w-3 mr-1" />}
+                        {keyword}
+                      </Badge>
+                    </button>
                   </motion.div>
                 ))}
               </div>
+              {selectedMissing.length > 0 && (
+                <Button size="sm" className="w-full mt-3 gap-2" onClick={() => setConfirmSkillsOpen(true)}>
+                  <Plus className="h-4 w-4" />
+                  Add {selectedMissing.length} to my profile
+                </Button>
+              )}
             </AnimatedCard>
 
             {/* What Changed */}
@@ -1752,14 +881,31 @@ export default function ResumePreviewPage() {
                 <Edit className="h-4 w-4" />
                 {isEditMode ? "Done Editing" : "Edit Resume"}
               </Button>
-              <Button variant="ghost" className="w-full gap-2">
-                <ExternalLink className="h-4 w-4" />
-                Share Link
-              </Button>
             </div>
           </div>
         </div>
       </div>
+
+      <Dialog open={confirmSkillsOpen} onOpenChange={setConfirmSkillsOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Only add what is true</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            These go into your profile as your own skills, and future resumes may list them. Add them only if you genuinely
+            have this experience — employers ask about anything on your resume.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {selectedMissing.map((keyword) => (
+              <Badge key={keyword} variant="secondary">{keyword}</Badge>
+            ))}
+          </div>
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" onClick={() => setConfirmSkillsOpen(false)}>Cancel</Button>
+            <Button onClick={handleAddSkills}>Yes, I have these</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={coverLetterOpen} onOpenChange={setCoverLetterOpen}>
         <DialogContent className="max-w-2xl">

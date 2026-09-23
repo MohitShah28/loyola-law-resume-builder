@@ -2,10 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { motion } from "framer-motion"
-import { Bell, Moon, Search, Sun } from "lucide-react"
+import { Bell, Moon, Sun } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { AppNotification, getNotifications, markAllNotificationsRead, subscribeToNotifications } from "@/lib/notifications"
 
@@ -56,11 +55,13 @@ export function Header({ title, subtitle }: HeaderProps) {
       initial={false}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="h-16 border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-30"
+      className="min-h-16 border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-30"
     >
-      <div className="h-full px-6 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="lg:hidden w-10" /> {/* Spacer for mobile menu button */}
+      {/* min-h-16 rather than a fixed h-16: long titles wrap to two lines on
+          narrow screens and would otherwise overflow and clip out of the bar. */}
+      <div className="min-h-16 px-4 sm:px-6 py-2 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+          <div className="lg:hidden w-10 shrink-0" /> {/* Spacer for mobile menu button */}
           <Button
             variant="ghost"
             size="icon"
@@ -71,22 +72,15 @@ export function Header({ title, subtitle }: HeaderProps) {
           >
             {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </Button>
-          <div>
-            <h1 className="text-lg font-semibold text-foreground">{title}</h1>
+          <div className="min-w-0">
+            <h1 className="text-base sm:text-lg font-semibold text-foreground leading-tight">{title}</h1>
             {subtitle && (
-              <p className="text-sm text-muted-foreground">{subtitle}</p>
+              <p className="text-xs sm:text-sm text-muted-foreground leading-tight line-clamp-2">{subtitle}</p>
             )}
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="hidden md:flex relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search..."
-              className="w-64 pl-9 bg-muted/50 border-0 focus-visible:ring-1"
-            />
-          </div>
+        <div className="flex items-center gap-1 sm:gap-3 shrink-0">
           <div className="relative" ref={notificationsRef}>
             <Button
               variant="ghost"

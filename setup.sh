@@ -3,7 +3,7 @@
 # Usage:  bash setup.sh
 set -e
 
-echo "=== Resume AI setup (Mac/Linux) ==="
+echo "=== Loyola Law Resume Builder setup (Mac/Linux) ==="
 
 # 1. Check Node.js 20+
 if ! command -v node >/dev/null 2>&1; then
@@ -40,7 +40,7 @@ $PNPM install
 # 4. Create .env.local from template if missing
 if [ ! -f .env.local ]; then
   cp .env.example .env.local
-  echo "Created .env.local — add your GROQ_API_KEY (free at https://console.groq.com)."
+  echo "Created .env.local — add a free GEMINI_API_KEY (https://aistudio.google.com/apikey). See SETUP.md for backup keys."
 else
   echo ".env.local already exists — leaving it as is."
 fi
@@ -48,5 +48,5 @@ fi
 echo ""
 echo "=== Setup complete! ==="
 echo "1. Edit .env.local and paste your API key (optional — app works without it)."
-echo "2. Start the app:   pnpm dev"
+echo "2. Start the app:   $PNPM dev"
 echo "3. Open:            http://localhost:3000"

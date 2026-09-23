@@ -9,6 +9,7 @@ import {
   User,
   FileText,
   Eye,
+  Mail,
   History,
   Settings,
   Menu,
@@ -23,6 +24,7 @@ const navItems = [
   { href: "/profile", icon: User, label: "Profile Knowledge Base" },
   { href: "/resume-builder", icon: FileText, label: "Resume Builder" },
   { href: "/resume-preview", icon: Eye, label: "Resume Preview" },
+  { href: "/cover-letter", icon: Mail, label: "Cover Letter" },
   { href: "/history", icon: History, label: "History" },
   { href: "/settings", icon: Settings, label: "Settings" },
 ]
@@ -65,7 +67,9 @@ export function Sidebar() {
           x: isMobileOpen ? 0 : undefined
         }}
         className={cn(
-          "fixed left-0 top-0 h-screen bg-card border-r border-border z-40",
+          // overflow-hidden keeps the logo/nav labels from spilling past the
+          // right edge while the drawer sits off-screen on mobile.
+          "fixed left-0 top-0 h-screen bg-card border-r border-border z-40 overflow-hidden",
           "flex flex-col",
           "lg:translate-x-0",
           !isMobileOpen && "-translate-x-full lg:translate-x-0"

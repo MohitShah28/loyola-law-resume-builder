@@ -7,6 +7,7 @@ import {
   Plus,
   Sparkles,
   Eye,
+  Mail,
 } from "lucide-react"
 import { AppLayout } from "@/components/layout/app-layout"
 import { AnimatedCard } from "@/components/ui/animated-card"
@@ -30,6 +31,12 @@ const actions = [
     description: "Review and download the latest generated resume.",
     href: "/resume-preview",
     icon: Eye,
+  },
+  {
+    title: "Cover Letter",
+    description: "Paste a job description and get a letter written from your profile.",
+    href: "/cover-letter",
+    icon: Mail,
   },
 ]
 

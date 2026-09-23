@@ -19,27 +19,27 @@ import { CardSkeleton } from "@/components/ui/skeleton-loader"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
+import { createProfileWorkingCopy } from "@/lib/profile-storage"
+import { atsScoreMessage, generateResumeFromJob, rankExperienceForJob } from "@/lib/resume-generator"
+import { toast } from "sonner"
 
-const sampleJobDescription = `Senior Data Analyst at Google
+const sampleJobDescription = `Judicial Law Clerk, U.S. District Court for the Central District of California
 
 About the Role:
-We are looking for a Senior Data Analyst to join our team. You will work with large datasets to drive business insights and support decision-making across the organization.
+Chambers seeks a term law clerk to assist the Judge with civil and criminal matters.
 
 Requirements:
-- 5+ years of experience in data analysis
-- Expert-level SQL skills
-- Proficiency in Python (Pandas, NumPy, Scikit-learn)
-- Experience with data visualization tools (Tableau, Power BI)
-- Strong communication and presentation skills
-- Experience with cloud platforms (GCP, AWS)
-- Machine learning knowledge is a plus
+- J.D. or LL.M. from an accredited law school; bar admission or bar exam registration preferred
+- Excellent legal research and writing skills (Westlaw, Lexis)
+- Law review or journal experience preferred
+- Strong command of the Bluebook and federal civil procedure
+- Attention to detail and discretion with confidential matters
 
 Responsibilities:
-- Analyze complex datasets to identify trends and patterns
-- Build and maintain dashboards for stakeholders
-- Collaborate with cross-functional teams
-- Present findings to executive leadership
-- Develop predictive models`
+- Draft bench memoranda, orders, and opinions
+- Research legal issues and summarize the record
+- Cite-check and proofread draft opinions
+- Attend hearings, conferences, and trials`
 
 export default function JobAnalysisPage() {
   const [jobDescription, setJobDescription] = useState("")
@@ -49,7 +49,7 @@ export default function JobAnalysisPage() {
     requiredSkills: string[]
     matchingSkills: string[]
     missingSkills: string[]
-    recommendedProjects: string[]
+    recommendedExperience: string[]
     atsScore: number
   } | null>(null)
 
@@ -58,7 +58,9 @@ export default function JobAnalysisPage() {
       const text = await navigator.clipboard.readText()
       setJobDescription(text)
     } catch {
+      // Clipboard access was blocked; load an example so the page is usable.
       setJobDescription(sampleJobDescription)
+      toast.info("Clipboard access was blocked, so a sample job description was loaded. Paste yours into the box instead.")
     }
   }
 
@@ -68,24 +70,39 @@ export default function JobAnalysisPage() {
     setAnalysis(null)
   }
 
+  // Runs the same local matching engine the resume and cover letter use, so
+  // the score and keyword lists here agree with what those pages show.
   const handleAnalyze = () => {
     if (!jobDescription.trim()) return
-    
+
     setIsAnalyzing(true)
     setAnalysisComplete(false)
-    
-    // Simulate analysis
-    setTimeout(() => {
+
+    // Yield a frame so the loading state renders before the synchronous work.
+    window.requestAnimationFrame(() => {
+      const profile = createProfileWorkingCopy()
+      const resume = generateResumeFromJob({
+        profile,
+        jobDescription,
+        template: "university-law",
+        tone: "professional",
+        experienceLevel: "entry",
+        length: "medium",
+      })
+      const ranked = rankExperienceForJob(profile, jobDescription)
+      setAnalysis({
+        requiredSkills: [...resume.matchedKeywords, ...resume.missingKeywords],
+        matchingSkills: resume.matchedKeywords,
+        missingSkills: resume.missingKeywords,
+        recommendedExperience: ranked.slice(0, 4).map(
+          ({ experience, matchedKeywords }) =>
+            `${experience.position}, ${experience.company} — covers ${matchedKeywords.slice(0, 4).join(", ")}`
+        ),
+        atsScore: resume.atsScore,
+      })
       setIsAnalyzing(false)
       setAnalysisComplete(true)
-      setAnalysis({
-        requiredSkills: ["SQL", "Python", "Pandas", "NumPy", "Tableau", "Power BI", "Machine Learning", "GCP", "AWS", "Data Visualization"],
-        matchingSkills: ["SQL", "Python", "Pandas", "NumPy", "Tableau", "Power BI", "Machine Learning", "AWS"],
-        missingSkills: ["GCP", "Executive Presentation"],
-        recommendedProjects: ["HR Analytics Platform", "Customer Personality Analysis", "AI Data Cleaning Dashboard"],
-        atsScore: 88
-      })
-    }, 2000)
+    })
   }
 
   return (
@@ -184,7 +201,7 @@ export default function JobAnalysisPage() {
                           ATS Match Score
                         </h3>
                         <p className="text-sm text-muted-foreground mt-1">
-                          Based on your profile and the job requirements
+                          {atsScoreMessage(analysis.atsScore)}
                         </p>
                       </div>
                       <AtsScoreCircle score={analysis.atsScore} size="md" />
@@ -254,18 +271,25 @@ export default function JobAnalysisPage() {
                       ))}
                     </div>
                     <p className="text-sm text-muted-foreground mt-3">
-                      Consider highlighting related experience or learning these skills
+                      {analysis.missingSkills.length
+                        ? "The posting asks for these and your profile does not mention them. Add any that are genuinely true of you on the Profile page; the rest are gaps to address in a cover letter or interview."
+                        : "Your profile mentions every keyword this posting asks for."}
                     </p>
                   </AnimatedCard>
 
-                  {/* Recommended Projects */}
+                  {/* Experience to Highlight */}
                   <AnimatedCard delay={0.4}>
                     <h3 className="font-semibold text-foreground flex items-center gap-2 mb-4">
                       <Lightbulb className="h-5 w-5 text-[#4f46e5]" />
-                      Recommended Projects to Highlight
+                      Experience to Highlight
                     </h3>
+                    {!analysis.recommendedExperience.length && (
+                      <p className="text-sm text-muted-foreground">
+                        None of your experience entries mention this posting&apos;s keywords yet.
+                      </p>
+                    )}
                     <div className="space-y-2">
-                      {analysis.recommendedProjects.map((project, index) => (
+                      {analysis.recommendedExperience.map((project, index) => (
                         <motion.div
                           key={project}
                           initial={{ x: -20, opacity: 0 }}

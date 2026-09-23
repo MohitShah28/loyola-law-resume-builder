@@ -14,6 +14,8 @@ import {
   scoreResumeAgainstJob,
   sortExperienceByRecency,
 } from "@/lib/resume-generator"
+import { getGeminiModels } from "@/lib/gemini-models"
+import { getOpenRouterApiKey, requestOpenRouterText } from "@/lib/openrouter"
 
 const GROQ_MODELS = [
   "llama-3.3-70b-versatile",
@@ -21,8 +23,7 @@ const GROQ_MODELS = [
   "openai/gpt-oss-20b",
 ] as const
 
-const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
-const DEFAULT_CLAUDE_MODEL = "claude-opus-4-8"
+const DEFAULT_CLAUDE_MODEL = "claude-opus-5"
 const MAX_OUTPUT_TOKENS = 8000
 // Groq free tier counts prompt + max_tokens against a 12k tokens-per-minute cap,
 // so the Groq request must reserve far less output budget than Gemini.
@@ -156,41 +157,28 @@ function buildPrompt(payload: GenerateResumePayload, fallback: GeneratedResume, 
 Create a content-rich, one-page ATS resume tailored to the job. The candidate is typically a law student or recent law graduate applying to legal positions (judicial clerkships and externships, law firm associate/summer associate roles, public interest and government positions).
 
 Rules:
-- Use legal-industry resume conventions: emphasize legal research and writing, advocacy, drafting (memoranda, motions, briefs), clinical and externship work, journal membership, moot court, and bar admissions or certifications. Use precise legal terminology from the job description (practice areas, court names, procedural posture) when supported by the candidate's real experience.
-- For judicial clerkship applications, foreground research/writing, bench memoranda, cite-checking, and academic credentials. For firm roles, foreground practice-area fit, drafting, and diligence work. For public interest roles, foreground client service, clinics, community work, and language skills.
+- Every template (university-law, original-cv, harvard, modern, executive, compact) uses the official Loyola Law School resume format. Sections, in this order, each shown only when the candidate has data: BAR ADMISSION, WORK AUTHORIZATION, EDUCATION (school, location, degree and honors, date, and an "Activities:" line), EXPERIENCE (employer, location, position, dates, bullets), ADDITIONAL INFORMATION (Languages, Volunteer, Memberships, Honors, Certifications, Skills, Interests). There is no summary, skills, or projects section on the page.
+- Bar admission, work authorization, education, and additional information are printed directly from the candidate data. Do not rewrite or invent them.
+- International students: workAuthorizationDetails (visa status, OPT/CPT/Academic Training dates, needsSponsorship) is context only. Never state or imply U.S. citizenship, permanent residency, or that no sponsorship is needed unless the candidate data says so, and never mention visa status inside bullets.
+- Describe foreign legal experience accurately, naming the jurisdiction where it helps (e.g. British Columbia). Never imply U.S. bar admission unless barDetails lists it.
+- Your main job is EXPERIENCE: choose the most relevant entries (up to 4) and rewrite their bullets for this job.
+- Use legal-industry resume conventions: emphasize legal research and writing, advocacy, drafting (memoranda, motions, briefs), client work, and clinical or externship work. Use precise legal terminology from the job description (practice areas, court names, procedural posture) when supported by the candidate's real experience.
+- For judicial clerkship applications, foreground research/writing, bench memoranda, and cite-checking. For firm roles, foreground practice-area fit, drafting, and diligence work. For public interest roles, foreground client service, clinics, and community work.
 - Use only truthful candidate data. Do not invent companies, degrees, dates, metrics, certifications, or work experience.
 - Never fabricate numbers: no invented percentages, counts, team sizes, or revenue figures. Use a number only when it appears in the candidate data.
 - If the job starts with PROFILE_ONLY_RESUME_REQUEST, make a strong general resume from the profile.
-- Tailoring goals, in priority order:
-  1. Rewrite the professional summary (improvedSummary) specifically for this job: name the target role, the candidate's strongest matching skills, and their fit for the role's goals in 3-4 sentences that naturally use the job description's own keywords.
-  2. For each selected experience entry, rewrite the existing bullets AND add new bullets that connect the candidate's documented responsibilities to this job's requirements, phrased with the job description's terminology.
-  3. For each selected project, add or rewrite bullets so the project clearly demonstrates the skills and technologies this job requires, whenever the project's real scope makes that plausible. Reframe existing work using the job's terminology rather than inventing new work.
-  4. In tailoredSkills, cover the job's required skills: include every required skill supported anywhere in the profile, plus important job keywords the candidate could credibly list based on adjacent experience. Order by relevance to this job. Do not include generic non-skill words.
-  5. Maximize ATS keyword match between the resume text and the job description so the resume ranks highly in applicant tracking systems.
-- Rewrite bullets professionally, select relevant projects, and add ATS keywords naturally.
-- Return full, substantive content when supported by the candidate profile: 6-8 bullets for the strongest experience entries and 4-5 bullets for each selected project.
-- Make bullets specific, action-oriented, and outcome-focused. Prefer what was built, analyzed, automated, improved, tested, deployed, or presented.
-- Optimize the Projects section with the same care as the summary and experience sections:
-  1. Analyze required skills, preferred skills, technologies, responsibilities, industry terminology, and ATS keywords from the job description.
-  2. Compare those requirements against every project in the candidate profile.
-  3. Select the most relevant projects and rewrite each selected project's description and highlights to emphasize supported work that matches the target role.
-  4. Leave unrelated projects mostly unchanged or omit them if stronger projects exist.
-  5. Ground added project bullets in the project's real scope, technologies, or profile data, and phrase them with the job's required skills and terminology.
-- For selectedProjects, preserve the original project id/name/link. Only add a technology to a project's technologies list when the job requires it and it plausibly fits that project's real stack.
-- For litigation, transactional, regulatory, or compliance roles, emphasize supported research, drafting, advocacy, and matter-management work; for non-legal roles, emphasize the transferable analysis, writing, and project work the profile actually supports.
+- Bullet style follows the Loyola sample: 3-5 bullets per experience entry, each one line, starting with a past-tense action verb, no ending period (e.g. "Drafted research memoranda and discovery"). Add a bullet only when that entry's documented work directly supports it.
+- NEVER change what an experience actually was. Keep each entry's practice area, subject matter, client type, forum, and governing law exactly as the candidate wrote them. Keep their specific terms — for example "asylum", "removal defense", "immigration", "Section 1983", "employment law", "criminal", "landlord-tenant" — and never replace them with words borrowed from the job description (such as "regulatory", "corporate", "commercial", "transactional", or "tax"). A bullet about asylum filings stays about asylum filings.
+- NEVER attach a descriptive word, industry, or document type taken from the job description to a bullet that does not already contain it. If the candidate's bullet says "client documents", do not make it "client financial documents"; if it says "demand letters", do not make them "financial demand letters". Adjectives such as financial, corporate, commercial, regulatory, technical, quantitative, or economic may appear only when the candidate's own wording already has them.
+- NEVER upgrade the candidate's level of involvement. "Observed" stays observed; "assisted with" stays assisted; "shadowed" stays shadowed. Do not promote these to represented, led, managed, evaluated, advised, negotiated, or supervised.
+- Tailoring means choosing which true experience to feature, ordering bullets so the most relevant come first, and tightening wording. Use the job's terminology only where it describes the same work the candidate actually did. When an entry is unrelated to this job, keep its bullets close to the original instead of reframing them.
+- improvedSummary: 2-3 sentences on the candidate's fit for this job. It is NOT printed on the resume; it is used for the cover letter.
+- tailoredSkills: the candidate's own listed skills ordered by relevance to this job. Never add skills the candidate did not list.
+- selectedProjects: return [] (projects are not part of the Loyola format).
+- selectedCertifications and selectedAchievements must come only from the candidate data arrays. Return [] when those arrays are empty.
 - Return changeHighlights explaining the main edits made compared with the candidate profile/job input.
-- Use plain ATS formatting only. No tables, columns, icons, markdown fences, or extra commentary.
-- If template is "university-law", favor a law-school resume structure: PROFILE, EDUCATION, EXPERIENCE, PROJECTS (journals, moot court, clinics), and SKILLS. Keep education before experience, but make the content full enough to fill one page with supported details.
-- For template "university-law", include 6-8 experience bullets, 3-5 bullets for each relevant project, a strong 3-4 sentence profile, and a focused skills section. Do not create generic catch-all sections.
-- If template is "original-cv", favor this structure: PROFESSIONAL SUMMARY, AREAS OF EXPERTISE, PROFESSIONAL EXPERIENCE, PROJECTS, EDUCATION, SKILLS. Make the content dense enough to visually fill one full page with minimal whitespace.
-- For template "original-cv", write a 3-4 sentence professional summary, 12-15 areas of expertise, include all relevant experience entries, and prefer fuller bullets over short generic bullets.
-- Certifications and achievements must come only from the candidate data arrays. If those arrays are empty, do not mention or create those sections.
-- If the candidate has real certifications, include a dedicated CERTIFICATIONS section with name, issuer, date, and credential ID only when available.
-- If the candidate has real awards, honors, publications, or measurable achievements, include a dedicated HONORS & ACHIEVEMENTS section. Do not show these sections when the arrays are empty.
-- Apply the certifications/achievements rule and page-filling rule to every template: original-cv, university-law, harvard, modern, executive, and compact.
-- If certifications or achievements are empty, use the available page space for richer supported experience bullets, more relevant project bullets, and a stronger skills section. Do not change the selected template structure.
-- The resume must visually fill one full page. When the profile has 3 or fewer projects, write 5-6 substantive bullets for each selected project and a fuller 4-sentence professional summary, all grounded in the candidate's real work.
 - Google context may be used only to understand public role/company language and keywords. Do not add unsupported candidate claims from Google.
+- Plain text only: no markdown, tables, icons, or commentary.
 - Return valid JSON only.
 
 Return this exact JSON shape (do not include full resume text — it is assembled from the fields below):
@@ -246,6 +234,11 @@ ${JSON.stringify({
   skills: payload.skills,
   achievements: payload.achievements,
   certifications: payload.certifications,
+  barAdmission: payload.barAdmission || [],
+  workAuthorization: payload.workAuthorization || "",
+  workAuthorizationDetails: payload.workAuthorizationDetails || null,
+  barDetails: payload.barDetails || null,
+  additionalInfo: payload.additionalInfo,
   pastResumeDetails: payload.pastResumeDetails || "",
 })}
 
@@ -338,10 +331,9 @@ function normalizeProjects(value: Partial<GeneratedResume>["selectedProjects"], 
 }
 
 function normalizeExperience(value: Partial<GeneratedResume>["selectedExperience"], fallback: GeneratedResume) {
-  const isDenseOnePage = fallback.template === "original-cv" || fallback.template === "university-law"
-  const hasSupplementalSections = fallback.profile.certifications.length > 0 || fallback.profile.achievements.length > 0
-  const experienceLimit = isDenseOnePage ? 4 : 3
-  const bulletLimit = isDenseOnePage ? 8 : hasSupplementalSections ? 5 : 6
+  // Loyola format for every template: up to 4 roles, at most 6 bullets each.
+  const experienceLimit = 4
+  const bulletLimit = 6
   const selected = Array.isArray(value) && value.length ? value : fallback.selectedExperience
   const merged = [...selected]
 
@@ -359,13 +351,12 @@ function normalizeExperience(value: Partial<GeneratedResume>["selectedExperience
       ? experience.description
       : fallbackExperience?.description || []
 
+    // Use the model's rewritten bullets as-is. Padding them with the original
+    // bullets printed every point twice (rewritten + original).
     return {
       ...fallbackExperience,
       ...experience,
-      description: (description.length >= 4
-        ? description
-        : Array.from(new Set([...description, ...(fallbackExperience?.description || [])]))
-      ).slice(0, bulletLimit),
+      description: description.slice(0, bulletLimit),
     }
   })
 
@@ -449,9 +440,6 @@ function getGeminiApiKey() {
   return apiKey && apiKey !== "your_gemini_api_key_here" ? apiKey : ""
 }
 
-function getGeminiModel() {
-  return process.env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL
-}
 
 function getClaudeApiKey() {
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim()
@@ -629,18 +617,28 @@ function getGeminiTokenUsage(response: GeminiGenerateContentResponse, model: str
   }
 }
 
+// Google's quota/overload errors are long; students only need the gist.
+function shortGeminiError(error: unknown) {
+  const message = error instanceof Error ? error.message : "failed"
+  if (/quota/i.test(message)) return "no quota on this API plan"
+  if (/high demand|overloaded|unavailable/i.test(message)) return "busy (high demand)"
+  return message.slice(0, 160)
+}
+
 async function requestGeminiResume({
   apiKey,
   model,
   payload,
   fallback,
   googleContext,
+  retryOnRateLimit,
 }: {
   apiKey: string
   model: string
   payload: GenerateResumePayload
   fallback: GeneratedResume
   googleContext: string
+  retryOnRateLimit: boolean
 }) {
   const userPrompt = buildPrompt(payload, fallback, googleContext)
   const url = new URL(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`)
@@ -674,8 +672,9 @@ async function requestGeminiResume({
     data = (await response.json().catch(() => ({}))) as GeminiGenerateContentResponse
     if (response.ok) break
 
-    // Overload (503) and rate limit (429) are usually transient — retry once.
-    if (attempt === 0 && (response.status === 503 || response.status === 429)) {
+    // Overload (503) is usually transient, so retry once. A 429 usually means the
+    // plan has no quota for this model; only retry it on the last model left.
+    if (attempt === 0 && (response.status === 503 || (retryOnRateLimit && response.status === 429))) {
       await new Promise((resolve) => setTimeout(resolve, 1500))
       continue
     }
@@ -700,6 +699,48 @@ async function requestGeminiResume({
 
   return {
     resume: normalizeGroqResume(parsed, fallback, model, payload.jobDescription),
+    tokenUsage,
+  }
+}
+
+async function requestOpenRouterResume({
+  apiKey,
+  payload,
+  fallback,
+  googleContext,
+}: {
+  apiKey: string
+  payload: GenerateResumePayload
+  fallback: GeneratedResume
+  googleContext: string
+}) {
+  const userPrompt = buildPrompt(payload, fallback, googleContext)
+  const result = await requestOpenRouterText({
+    apiKey,
+    system: SYSTEM_PROMPT,
+    prompt: userPrompt,
+    maxTokens: MAX_OUTPUT_TOKENS,
+  })
+  const parsed = parseJsonContent(result.text)
+  const tokenUsage: ResumeTokenUsage = {
+    provider: "openrouter",
+    model: result.model,
+    apiKeyIndex: 1,
+    ...result.usage,
+  }
+  await saveGenerationRunLog({
+    tokenUsage,
+    payload,
+    fallback,
+    systemPrompt: SYSTEM_PROMPT,
+    userPrompt,
+    rawContent: result.text,
+    parsedJson: parsed,
+  })
+
+  return {
+    resume: normalizeGroqResume(parsed, fallback, result.model, payload.jobDescription),
+    model: result.model,
     tokenUsage,
   }
 }
@@ -831,29 +872,63 @@ export async function POST(request: Request) {
   }
 
   if (geminiEnabled && geminiApiKey) {
-    try {
-      const geminiModel = getGeminiModel()
-      const { resume, tokenUsage } = await requestGeminiResume({
-        apiKey: geminiApiKey,
-        model: geminiModel,
-        payload,
-        fallback,
-        googleContext,
-      })
+    // Best model first; move to the next on quota, overload, or bad output.
+    const geminiModels = getGeminiModels()
+    const geminiFailures: string[] = []
+    for (const [index, geminiModel] of geminiModels.entries()) {
+      try {
+        const { resume, tokenUsage } = await requestGeminiResume({
+          apiKey: geminiApiKey,
+          model: geminiModel,
+          payload,
+          fallback,
+          googleContext,
+          retryOnRateLimit: index === geminiModels.length - 1,
+        })
 
-      return NextResponse.json({
-        resume,
-        source: "gemini",
-        modelUsed: geminiModel,
-        tokenUsage,
-      })
-    } catch (error) {
-      providerWarnings.push(error instanceof Error ? `Gemini failed: ${error.message}` : "Gemini failed.")
+        // Say which better models were skipped and why (e.g. no Pro quota).
+        const warnings = [
+          ...providerWarnings,
+          ...(geminiFailures.length ? [`Used ${geminiModel}; skipped ${geminiFailures.join("; ")}.`] : []),
+        ]
+        return NextResponse.json({
+          resume,
+          source: "gemini",
+          modelUsed: geminiModel,
+          tokenUsage,
+          ...(warnings.length ? { warning: warnings.join(" ") } : {}),
+        })
+      } catch (error) {
+        geminiFailures.push(`${geminiModel}: ${shortGeminiError(error)}`)
+      }
     }
+    providerWarnings.push(`Gemini failed (${geminiFailures.join("; ")}).`)
   } else if (!geminiEnabled) {
     providerWarnings.push("Gemini API is disabled.")
   } else {
     providerWarnings.push("GEMINI_API_KEY is not configured.")
+  }
+
+  // Backup when Claude and Gemini are out: runs before the smaller Groq model.
+  const openRouterApiKey = getOpenRouterApiKey()
+  if (openRouterApiKey) {
+    try {
+      const { resume, model, tokenUsage } = await requestOpenRouterResume({
+        apiKey: openRouterApiKey,
+        payload,
+        fallback,
+        googleContext,
+      })
+      return NextResponse.json({
+        resume,
+        source: "openrouter",
+        modelUsed: model,
+        tokenUsage,
+        ...(providerWarnings.length ? { warning: providerWarnings.join(" ") } : {}),
+      })
+    } catch (error) {
+      providerWarnings.push(error instanceof Error ? `OpenRouter failed: ${error.message}` : "OpenRouter failed.")
+    }
   }
 
   if (!groqEnabled) {

@@ -41,15 +41,23 @@ The script will:
 3. Install all dependencies
 4. Create your `.env.local` config file from the template
 
-## Step 2 — Add your API key (optional but recommended)
+## Step 2 — Add your API keys (optional but recommended)
 
-Open the file `.env.local` in any text editor and paste your key:
+Open the file `.env.local` in any text editor. Each key is free; add as many as
+you can. The app tries them in this order and moves to the next one when a
+provider is busy or out of free quota:
 
-```
-GROQ_API_KEY=your_key_here
-```
+| Order | Line to fill in | Where to get a free key |
+|---|---|---|
+| 1 (recommended) | `GEMINI_API_KEY=` | <https://aistudio.google.com/apikey> |
+| 2 (backup) | `OPENROUTER_API_KEY=` | <https://openrouter.ai/keys> (free models, 50 requests a day) |
+| 3 (backup) | `GROQ_API_KEY=` | <https://console.groq.com> |
 
-Get a **free** key at <https://console.groq.com>.
+Paste each key right after the `=`, with no spaces or quotes, then save the file.
+A paid Claude key (`ANTHROPIC_API_KEY`) is also supported and tried first.
+
+**Never share `.env.local` or paste your keys into a chat, email, or document.**
+If a key leaks, delete it on the provider's site and create a new one.
 
 **No key?** The app still works — it uses a built-in local generator (lower quality, but functional).
 

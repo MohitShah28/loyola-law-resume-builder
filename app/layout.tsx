@@ -23,6 +23,13 @@ export default function RootLayout({
           <Toaster position="top-right" />
           {process.env.NODE_ENV === 'production' && <Analytics />}
         </ThemeProvider>
+        {process.env.NODE_ENV !== 'production' && (
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `(function(){var A=['bis_skin_checked','bis_register','__processed_by_react_hydration__'];function strip(root){for(var i=0;i<A.length;i++){if(root.nodeType===1&&root.hasAttribute(A[i]))root.removeAttribute(A[i]);var n=root.querySelectorAll?root.querySelectorAll('['+A[i]+']'):[];for(var j=0;j<n.length;j++)n[j].removeAttribute(A[i])}}strip(document.documentElement);new MutationObserver(function(recs){for(var i=0;i<recs.length;i++){var r=recs[i];if(r.type==='attributes'){r.target.removeAttribute(r.attributeName)}else{for(var j=0;j<r.addedNodes.length;j++){if(r.addedNodes[j].nodeType===1)strip(r.addedNodes[j])}}}}).observe(document.documentElement,{subtree:true,childList:true,attributes:true,attributeFilter:A})})()`,
+            }}
+          />
+        )}
       </body>
     </html>
   )

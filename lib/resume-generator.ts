@@ -1,5 +1,6 @@
 import { mockProfile } from "@/lib/data"
 import { addNotification } from "@/lib/notifications"
+import { buildResumeDocument, documentToText } from "@/lib/resume-document"
 
 export type ProfileData = typeof mockProfile
 
@@ -40,6 +41,11 @@ export type GenerateResumePayload = {
   skills: ProfileData["skills"]
   achievements: ProfileData["achievements"]
   certifications: ProfileData["certifications"]
+  barAdmission?: ProfileData["barAdmission"]
+  workAuthorization?: ProfileData["workAuthorization"]
+  additionalInfo?: ProfileData["additionalInfo"]
+  barDetails?: ProfileData["barDetails"]
+  workAuthorizationDetails?: ProfileData["workAuthorizationDetails"]
   pastResumeDetails?: string
   jobDescription: string
   targetRole?: string
@@ -58,7 +64,7 @@ export type GenerateResumeApiResponse = {
 }
 
 export type ResumeTokenUsage = {
-  provider: "claude" | "groq" | "gemini"
+  provider: "claude" | "groq" | "gemini" | "openrouter"
   model: string
   apiKeyIndex: number
   promptTokens: number
@@ -94,6 +100,11 @@ export function profileToGeneratePayload({
     skills: profile.skills,
     achievements: profile.achievements,
     certifications: profile.certifications,
+    barAdmission: profile.barAdmission,
+    workAuthorization: profile.workAuthorization,
+    additionalInfo: profile.additionalInfo,
+    barDetails: profile.barDetails,
+    workAuthorizationDetails: profile.workAuthorizationDetails,
     jobDescription,
     targetRole,
     template,
@@ -117,6 +128,11 @@ export function payloadToProfile(payload: GenerateResumePayload): ProfileData {
     skills: payload.skills || mockProfile.skills,
     achievements: payload.achievements || [],
     certifications: payload.certifications || [],
+    barAdmission: payload.barAdmission || [],
+    workAuthorization: payload.workAuthorization || "",
+    additionalInfo: payload.additionalInfo || { languages: [], volunteer: [], memberships: [], interests: [] },
+    barDetails: payload.barDetails || { admissions: [], usBarExams: [] },
+    workAuthorizationDetails: payload.workAuthorizationDetails || { status: "", startDate: "", endDate: "", needsSponsorship: "" },
   }
 }
 
@@ -179,80 +195,183 @@ export async function requestGeneratedResume(payload: GenerateResumePayload): Pr
   return request
 }
 
+// Legal-industry terms used for local ATS keyword extraction.
 const keywordBank = [
-  "Python",
-  "SQL",
-  "JavaScript",
-  "TypeScript",
-  "React",
-  "Next.js",
-  "Node.js",
-  "Web Applications",
-  "Website Features",
-  "Backend Development",
-  "APIs",
-  "Pandas",
-  "NumPy",
-  "Scikit-learn",
-  "TensorFlow",
-  "Machine Learning",
-  "Deep Learning",
-  "NLP",
-  "LLMs",
-  "AI",
-  "AI Model Training",
-  "Prompt Engineering",
-  "Data Analysis",
-  "Data Visualization",
-  "Tableau",
-  "Power BI",
-  "Business Intelligence",
-  "ETL",
-  "Data Pipeline",
-  "Dashboard",
-  "Analytics",
-  "A/B Testing",
-  "Predictive Analytics",
-  "AWS",
-  "Azure",
-  "GCP",
-  "Docker",
-  "Kubernetes",
-  "PostgreSQL",
-  "MySQL",
-  "MongoDB",
-  "Redis",
-  "Spark",
-  "Stakeholder Management",
-  "Executive Presentation",
-  "Cross-functional Collaboration",
-  "Agile",
-  "Leadership",
-  "Automation",
-  "Workflow Automation",
-  "Internal Tools",
-  "QA",
-  "Debugging",
-  "Deployment",
-  "Startup",
-  "Product Development",
-  "Reporting",
-  "Forecasting",
-  "Customer Segmentation",
+  "Legal Research",
+  "Legal Writing",
+  "Legal Analysis",
+  "Westlaw",
+  "Lexis",
+  "LexisNexis",
+  "Bloomberg Law",
+  "Bluebook",
+  "Cite-Checking",
+  "Bench Memoranda",
+  "Research Memoranda",
+  "Motion Practice",
+  "Motion Drafting",
+  "Brief Writing",
+  "Appellate",
+  "Oral Advocacy",
+  "Moot Court",
+  "Law Review",
+  "Litigation",
+  "Civil Procedure",
+  "Federal Civil Procedure",
+  "Criminal Law",
+  "Evidence",
+  "Discovery",
+  "Depositions",
+  "Document Review",
+  "Due Diligence",
+  "Contract Drafting",
+  "Contract Review",
+  "Transactional",
+  "Corporate",
+  "Mergers and Acquisitions",
+  "Securities",
+  "Regulatory Compliance",
+  "Compliance",
+  "Risk Management",
+  "Intellectual Property",
+  "Entertainment Law",
+  "Employment Law",
+  "Immigration Law",
+  "Environmental Law",
+  "Tax",
+  "Real Estate",
+  "Bankruptcy",
+  "Public Interest",
+  "Pro Bono",
+  "Client Counseling",
+  "Client Interviewing",
+  "Negotiation",
+  "Mediation",
+  "Arbitration",
+  "Trial Preparation",
+  "Judicial Clerkship",
+  "Externship",
+  "Clinic",
+  "Statutory Interpretation",
+  "Relativity",
+  "Spanish",
+  "Mandarin",
+  "French",
+  "Bilingual",
+  // Law students also apply to tax, consulting, and professional-services roles.
+  "Transfer Pricing",
+  "Corporate Tax",
+  "Tax Compliance",
+  "Tax Research",
+  "Economics",
+  "Finance",
+  "Accounting",
+  "Financial Analysis",
+  "Benchmarking",
+  "Report Writing",
+  "Technical Writing",
+  "Proofreading",
+  "Editing",
+  "Public Speaking",
+  "Presentations",
+  "Client Communication",
+  "Project Management",
+  "Microsoft Excel",
+  "Microsoft Word",
+  "PowerPoint",
+  "Bloomberg Terminal",
 ]
 
-const actionVerbs = ["Built", "Developed", "Automated", "Optimized", "Delivered", "Collaborated on"]
+// Headings and boilerplate verbs in job postings ("Job Duties", "Assists",
+// "The") were being scored as required skills, which polluted the ATS keyword
+// lists and the score. Single capitalized words like these are dropped.
+const KEYWORD_STOPWORDS = new Set([
+  "the", "this", "that", "these", "those", "and", "or", "but", "for", "with", "from", "into",
+  "job", "jobs", "duties", "duty", "role", "roles", "position", "positions", "opportunity",
+  "responsibilities", "requirements", "required", "qualifications", "preferred", "education",
+  "experience", "experiences", "software", "language", "languages", "license", "licenses",
+  "certifications", "supervisory", "additional", "other", "others", "overview", "summary",
+  "information", "gathering", "analysis", "writing", "company", "companies", "client", "clients",
+  "team", "teams", "work", "working", "candidate", "candidates", "applicant", "applicants",
+  "you", "your", "we", "our", "us", "they", "their", "he", "she", "his", "her",
+  "assists", "assist", "analyzes", "analyze", "writes", "write", "prepares", "prepare",
+  "performs", "perform", "organizes", "organize", "takes", "take", "proofreads", "participates",
+  "includes", "including", "provides", "provide", "helps", "help", "uses", "use", "used",
+  "able", "ability", "strong", "skilled", "solid", "basic", "prior", "capable", "effective",
+  "exceptional", "excellent", "proficient", "familiarity", "knowledge", "skills", "skill",
+  "bachelors", "bachelor", "masters", "master", "degree", "degrees", "internship", "internships",
+  "salary", "salaries", "benefits", "individual", "individuals", "not", "necessary", "n",
+  // Generic words that read like proper nouns inside postings
+  // ("Standard and Poor's", "Go Systems", "Microsoft Office Suite").
+  "standard", "poor", "systems", "system", "suite", "products", "product", "moody", "branded",
+  "context", "historical", "value", "drivers", "division", "distribution", "overview",
+  // Imperative verbs that open posting sentences ("Draft bench memoranda").
+  // Words that also end real skill names ("Document Review", "Litigation
+  // Support") are deliberately not listed, because trimKeyword would cut them.
+  "draft", "drafts", "conduct", "conducts", "attend", "attends", "ensure", "ensures",
+  "maintain", "maintains", "coordinate", "coordinates", "serve", "serves", "handle",
+  "handles", "plus",
+])
+
+// "The Tax Associate" -> "Tax Associate": boilerplate words at either end of a
+// phrase are dropped so the same skill is not listed twice.
+function trimKeyword(term: string) {
+  const words = term.trim().split(/\s+/)
+  while (words.length && KEYWORD_STOPWORDS.has(normalize(words[0]))) words.shift()
+  while (words.length && KEYWORD_STOPWORDS.has(normalize(words[words.length - 1]))) words.pop()
+  return words.join(" ")
+}
+
+function isMeaningfulKeyword(term: string) {
+  const cleaned = term.trim()
+  if (cleaned.length < 3 || cleaned.length > 48) return false
+  const words = cleaned.split(/\s+/)
+  if (words.length === 1) return !KEYWORD_STOPWORDS.has(normalize(cleaned))
+  // Multi-word terms are kept unless every word is boilerplate ("Job Duties").
+  return words.some((word) => !KEYWORD_STOPWORDS.has(normalize(word)))
+}
 
 function normalize(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9+#.]+/g, " ").trim()
 }
 
-function includesTerm(text: string, term: string) {
+export function includesTerm(text: string, term: string) {
   return normalize(text).includes(normalize(term))
+}
+
+// Shared by the resume preview and the cover letter page. The panel used to
+// claim a document was "highly optimized" at any score.
+export function atsScoreMessage(score: number) {
+  if (score >= 85) return "Strong keyword match for this job"
+  if (score >= 70) return "Good match — review the missing keywords below"
+  if (score >= 55) return "Moderate match — add missing keywords you genuinely have"
+  return "Low keyword match for this posting — this job may want experience you have not listed"
 }
 
 function unique(values: string[]) {
   return Array.from(new Set(values.filter(Boolean)))
+}
+
+// Same keyword in two cases ("Presentations" / "presentations") counted twice
+// and cluttered the ATS lists, so the first spelling wins.
+function uniqueKeywords(values: string[]) {
+  const seen = new Set<string>()
+  const kept = values.filter((value) => {
+    const key = normalize(value)
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+  // Drop fragments already covered by a longer keyword ("Report" vs "Report
+  // Writing"), so one requirement is not scored twice.
+  return kept.filter((value) => {
+    const key = normalize(value)
+    if (key.includes(" ")) return true
+    return !kept.some((other) => {
+      const otherKey = normalize(other)
+      return otherKey !== key && otherKey.split(" ").includes(key)
+    })
+  })
 }
 
 function dateValue(value: string | undefined) {
@@ -285,6 +404,19 @@ function profileText(profile: ProfileData) {
   ].join(" ")
 }
 
+// A posting's first sentence is usually its title and employer ("Judicial Law
+// Clerk, U.S. District Court"). Long first lines are prose, not a heading.
+function postingHeading(jobDescription: string) {
+  const firstLine = jobDescription.split("\n").find((line) => line.trim()) || ""
+  const firstSentence = firstLine.split(/(?<=[a-z]{2})\.\s+/)[0].trim()
+  return firstSentence.length <= 120 ? firstSentence : ""
+}
+
+function countTerm(text: string, term: string) {
+  const needle = normalize(term)
+  return needle ? normalize(text).split(needle).length - 1 : 0
+}
+
 function extractKeywords(jobDescription: string) {
   const matchedBank = keywordBank.filter((keyword) => includesTerm(jobDescription, keyword))
   const requirementTerms = Array.from(
@@ -295,18 +427,33 @@ function extractKeywords(jobDescription: string) {
     .map((term) => term.trim())
     .filter((term) => term.length > 2 && term.length < 48)
   const capitalizedTerms = Array.from(
-    jobDescription.matchAll(/\b(?:[A-Z][a-zA-Z+#.]{2,})(?:\s+[A-Z][a-zA-Z+#.]{2,}){0,2}\b/g),
+    jobDescription.matchAll(/\b(?:[A-Z][a-zA-Z+#.]{2,})(?:[ \t]+[A-Z][a-zA-Z+#.]{2,}){0,2}\b/g),
     (match) => match[0]
-  ).filter((term) => !["The", "And", "Job", "Description", "Responsibilities", "Requirements"].includes(term))
+  )
+    // "Lexis. Bluebook" spans two sentences. Split where a period ends a word
+    // of two or more lowercase letters, which leaves "U.S. District" intact.
+    .flatMap((term) => term.split(/(?<=[a-z]{2})\.\s+/))
+    .map((term) => term.replace(/(?<=[a-z]{2})\.$/, ""))
 
-  return unique([...matchedBank, ...requirementTerms, ...capitalizedTerms]).slice(0, 28)
+  // Bank matches are trusted; free text from the posting is filtered so section
+  // headings, boilerplate verbs, and the posting's own title/employer never
+  // appear as "required skills".
+  const heading = postingHeading(jobDescription)
+  const isHeadingOnly = (term: string) =>
+    Boolean(heading) && includesTerm(heading, term) && countTerm(jobDescription, term) === 1
+  const isFreeTextSkill = (term: string) => isMeaningfulKeyword(term) && !isHeadingOnly(term)
+  return uniqueKeywords([
+    ...matchedBank,
+    ...requirementTerms.map(trimKeyword).filter(isFreeTextSkill),
+    ...capitalizedTerms.map(trimKeyword).filter(isFreeTextSkill),
+  ]).slice(0, 28)
 }
 
 function inferJobTitle(jobDescription: string) {
   const titlePatterns = [
     /(?:title|role|position)\s*[:-]\s*([^\n.]+)/i,
     /looking for a\s+([^.]+?)\s+to join/i,
-    /\b(Software Engineering Intern|Software Engineer Intern|Software Developer Intern|Software Engineer|Software Developer|Data Analyst|Data Scientist|Business Analyst|ML Engineer|Machine Learning Engineer|Analytics Manager)\b/i,
+    /\b(Judicial Law Clerk|Judicial Extern|Judicial Intern|Summer Associate|Associate Attorney|Staff Attorney|Deputy District Attorney|Deputy Public Defender|Legal Fellow|Legal Extern|Legal Intern|Law Clerk|Paralegal)\b/i,
   ]
 
   for (const pattern of titlePatterns) {
@@ -327,32 +474,10 @@ function scoreText(text: string, keywords: string[]) {
   return keywords.reduce((score, keyword) => score + (includesTerm(text, keyword) ? 1 : 0), 0)
 }
 
-function tailorBullets(bullets: string[], keywords: string[], jobDescription: string, targetCount = 5) {
-  const selectedKeywords = keywords.slice(0, 6)
-  const roleFocus = selectedKeywords.slice(0, 3).join(", ")
-  const tailored = bullets.slice(0, targetCount)
-
-  if (tailored.length >= targetCount) return tailored
-
-  return [
-    ...tailored,
-    roleFocus
-      ? `Translated requirements involving ${roleFocus} into practical deliverables, documentation, and reusable workflows`
-      : "Collaborated with stakeholders to translate business requirements into practical technical solutions",
-    includesTerm(jobDescription, "team") || includesTerm(jobDescription, "stakeholder")
-      ? "Communicated progress, tradeoffs, and results clearly with technical and non-technical stakeholders"
-      : "Documented workflows, tested outputs, and improved repeatability for analytical and automation processes",
-    includesTerm(jobDescription, "quality") || includesTerm(jobDescription, "test")
-      ? "Validated outputs through review, testing, and iteration to improve quality and reliability"
-      : "Improved project quality by organizing outputs for easier review, reuse, and decision-making",
-    includesTerm(jobDescription, "data") || includesTerm(jobDescription, "analysis")
-      ? "Cleaned, structured, and interpreted data to identify trends, explain findings, and support practical recommendations"
-      : "Organized project requirements, implementation notes, and final outputs so work could be reviewed and extended",
-    includesTerm(jobDescription, "business") || includesTerm(jobDescription, "analyst")
-      ? "Converted business questions into analysis plans, technical tasks, and concise reporting for decision makers"
-      : "Balanced technical execution with usability, maintainability, and clear communication of results",
-    "Reviewed deliverables for completeness, consistency, and alignment with stakeholder expectations before final handoff",
-  ].slice(0, targetCount)
+// Keeps the student's own bullets. The local fallback never pads with generic
+// filler; the AI providers do the job-specific rewriting.
+function tailorBullets(bullets: string[], targetCount = 5) {
+  return bullets.slice(0, targetCount)
 }
 
 function buildTailoredSkills(profile: ProfileData, jobDescription: string, keywords: string[], targetCount = 24) {
@@ -371,53 +496,21 @@ function buildTailoredSkills(profile: ProfileData, jobDescription: string, keywo
       skill,
       score:
         (includesTerm(jobDescription, skill) ? 3 : 0) +
-        (keywords.some((keyword) => includesTerm(skill, keyword) || includesTerm(keyword, skill)) ? 2 : 0) +
-        (["JavaScript", "TypeScript", "Next.js", "Python", "OpenAI API", "SQL", "Git", "Docker"].includes(skill) ? 1 : 0),
+        (keywords.some((keyword) => includesTerm(skill, keyword) || includesTerm(keyword, skill)) ? 2 : 0),
     }))
     .sort((a, b) => b.score - a.score)
     .map(({ skill }) => skill)
     .slice(0, targetCount)
 }
 
+// Not printed on the Loyola resume; used for cover letters.
 function buildImprovedSummary(profile: ProfileData, jobTitle: string, keywords: string[]) {
   const focus = keywords.slice(0, 5).join(", ")
-  if (includesTerm(jobTitle, "software")) {
-    return `Software developer and data-focused builder with experience in Python, JavaScript, TypeScript, automation, and AI-driven applications. Strong foundation in analytics, dashboards, workflow tooling, and full-cycle project execution, with interest in building product features, internal tools, and LLM-powered systems for practical business use cases.${focus ? ` Relevant focus areas include ${focus}.` : ""} Known for translating ambiguous requirements into usable technical solutions, improving processes through automation, and presenting clear outputs for technical and non-technical stakeholders.`
-  }
-
-  return `${profile.personalInfo.summary} Tailored for ${jobTitle} roles${focus ? ` with emphasis on ${focus}` : ""}. Brings hands-on experience across data cleaning, dashboards, automation, project delivery, and stakeholder-focused problem solving, with a strong ability to turn complex requirements into practical, measurable outputs.`
-}
-
-function tailorProjectHighlights(project: ProfileData["projects"][number], keywords: string[], jobDescription: string, targetCount = 5) {
-  const existingHighlights = project.highlights.length
-    ? project.highlights
-    : [project.description]
-  const projectEvidence = `${project.name} ${project.description} ${project.technologies.join(" ")} ${project.highlights.join(" ")}`
-  const relevantKeywords = keywords.filter((keyword) => includesTerm(projectEvidence, keyword))
-  const relevantTechnologies = project.technologies.filter((technology) =>
-    keywords.some((keyword) => includesTerm(technology, keyword) || includesTerm(keyword, technology)) ||
-    includesTerm(jobDescription, technology)
-  )
-  const rewrittenHighlights = existingHighlights.slice(0, targetCount)
-  const supportedAdditions = [
-    project.description
-      ? `Delivered ${/^[A-Z][a-z]/.test(project.description) ? project.description.charAt(0).toLowerCase() + project.description.slice(1) : project.description}`
-      : "",
-    relevantTechnologies.length
-      ? `Used ${relevantTechnologies.slice(0, 5).join(", ")} to support project implementation and analysis`
-      : "",
-    relevantKeywords.length && (includesTerm(projectEvidence, "dashboard") || includesTerm(projectEvidence, "visual") || includesTerm(projectEvidence, "report"))
-      ? `Organized findings into dashboard-ready outputs and visual summaries using supported project workflows`
-      : "",
-    relevantKeywords.length && (includesTerm(projectEvidence, "analysis") || includesTerm(projectEvidence, "data"))
-      ? `Analyzed project data and outputs to surface practical insights for decision-making`
-      : "",
-  ]
-
-  return unique([
-    ...rewrittenHighlights,
-    ...supportedAdditions,
-  ]).slice(0, targetCount)
+  const target = jobTitle === "Target Role" ? "legal positions" : `${jobTitle} positions`
+  return [
+    profile.personalInfo.summary.trim(),
+    `Seeking ${target}${focus ? `, with experience relevant to ${focus}` : ""}.`,
+  ].filter(Boolean).join(" ")
 }
 
 // Deterministic ATS score: percentage of job keywords actually present in the
@@ -433,161 +526,24 @@ export function scoreResumeAgainstJob(resumeText: string, jobDescription: string
   return { atsScore, matchedKeywords, missingKeywords }
 }
 
+// Every template shares the Loyola layout, so the ATS/plain text is built from
+// the same document model the preview, PDF, and DOCX render.
 export function formatResumeText(resume: Omit<GeneratedResume, "resume">) {
-  const profile = resume.profile
-  const skills = resume.tailoredSkills.length ? resume.tailoredSkills : [
-      ...profile.skills.programming,
-      ...profile.skills.dataAnalysis,
-      ...profile.skills.visualization,
-      ...profile.skills.cloud,
-      ...profile.skills.tools,
-    ]
-  const profileCertifications = Array.isArray(profile.certifications) ? profile.certifications : []
-  const profileAchievements = Array.isArray(profile.achievements) ? profile.achievements : []
-  const certificationSource = resume.selectedCertifications.length ? resume.selectedCertifications : profileCertifications
-  const achievementSource = resume.selectedAchievements.length ? resume.selectedAchievements : profileAchievements
-  const profileAchievementSet = new Set(profileAchievements.map(normalize).filter(Boolean))
-  const certificationLines = certificationSource.filter((cert) =>
-    profileCertifications.some((profileCert) =>
-      (cert.id && profileCert.id && cert.id === profileCert.id) || normalize(cert.name) === normalize(profileCert.name)
-    )
-  ).map((cert) => [
-    cert.name,
-    cert.issuer,
-    cert.date,
-    cert.credentialId ? `Credential ID: ${cert.credentialId}` : "",
-  ].filter(Boolean).join(" | "))
-  const achievementLines = achievementSource
-    .filter((achievement) => profileAchievementSet.has(normalize(achievement)))
-    .map((achievement) => `- ${achievement}`)
+  return documentToText(buildResumeDocument(resume))
+}
 
-  if (resume.template === "university-law") {
-    return [
-      `${profile.personalInfo.firstName} ${profile.personalInfo.lastName}`.toUpperCase(),
-      `${profile.personalInfo.location} | ${profile.personalInfo.phone} | ${profile.personalInfo.email}`,
-      [profile.personalInfo.linkedin, profile.personalInfo.github].filter(Boolean).join(" | "),
-      "",
-      "PROFILE",
-      resume.improvedSummary,
-      "",
-      "EDUCATION",
-      ...profile.education.flatMap((edu) => [
-        edu.institution,
-        `${edu.degree} in ${edu.field} | ${edu.endDate}`,
-        edu.gpa ? `GPA: ${edu.gpa}` : "",
-        "",
-      ]),
-      "EXPERIENCE",
-      ...resume.selectedExperience.flatMap((exp) => [
-        `${exp.company} | ${exp.location}`,
-        `${exp.position} | ${exp.startDate} - ${exp.endDate}`,
-        ...exp.description.map((bullet) => `- ${bullet}`),
-        "",
-      ]),
-      "PROJECTS",
-      ...resume.selectedProjects.flatMap((project) => [
-        `${project.name} | ${project.technologies.join(", ")}`,
-        project.description,
-        ...project.highlights.map((highlight) => `- ${highlight}`),
-        "",
-      ]),
-      "SKILLS",
-      unique(skills).join(", "),
-      certificationLines.length ? "" : undefined,
-      certificationLines.length ? "CERTIFICATIONS" : undefined,
-      ...certificationLines,
-      achievementLines.length ? "" : undefined,
-      achievementLines.length ? "HONORS & ACHIEVEMENTS" : undefined,
-      ...achievementLines,
-    ].filter((line) => line !== undefined).join("\n").trim()
-  }
-
-  if (resume.template === "original-cv") {
-    const expertise = unique([
-      "Business Systems Analysis",
-      "Python & SQL Programming",
-      "Project Management",
-      "Data Analysis & Reporting",
-      "Database Management",
-      "Technical Documentation",
-      "Data Visualization",
-      "Cross-Functional Collaboration",
-      ...skills,
-    ]).slice(0, 15)
-
-    return [
-      `${profile.personalInfo.firstName} ${profile.personalInfo.lastName}, M.SC.`,
-      `${resume.jobTitle !== "Target Role" ? resume.jobTitle : "Business Analyst"} | Data Specialist | Data Analyst`,
-      `${profile.personalInfo.phone} | ${profile.personalInfo.location} | ${profile.personalInfo.email} | ${profile.personalInfo.linkedin}`,
-      "",
-      "PROFESSIONAL SUMMARY",
-      resume.improvedSummary,
-      "",
-      "AREAS OF EXPERTISE",
-      expertise.map((skill) => `- ${skill}`).join("\n"),
-      "",
-      "PROFESSIONAL EXPERIENCE",
-      ...resume.selectedExperience.flatMap((exp) => [
-        `${exp.position} | ${exp.company}, ${exp.location} | ${exp.startDate} - ${exp.endDate}`,
-        ...exp.description.map((bullet) => `- ${bullet}`),
-        "",
-      ]),
-      "PROJECTS",
-      ...resume.selectedProjects.flatMap((project) => [
-        `${project.name}`,
-        `Tools: ${project.technologies.join(", ")}`,
-        ...project.highlights.map((highlight) => `- ${highlight}`),
-        "",
-      ]),
-      "EDUCATION",
-      ...profile.education.map((edu) => `${edu.degree} in ${edu.field}, ${edu.institution}${edu.gpa ? ` [${edu.gpa} GPA]` : ""}`),
-      "",
-      "SKILLS",
-      `Research Platforms: ${profile.skills.programming.join(", ")}`,
-      `Technology: ${unique([...profile.skills.visualization]).join(", ")}`,
-      `Legal Skills: ${profile.skills.dataAnalysis.join(", ")}`,
-      `Practice Tools & Additional: ${unique([...profile.skills.databases, ...profile.skills.tools]).join(", ")}`,
-      certificationLines.length ? "" : undefined,
-      certificationLines.length ? "CERTIFICATIONS" : undefined,
-      ...certificationLines,
-      achievementLines.length ? "" : undefined,
-      achievementLines.length ? "HONORS & ACHIEVEMENTS" : undefined,
-      ...achievementLines,
-    ].filter((line) => line !== undefined).join("\n").trim()
-  }
-
-  return [
-    `${profile.personalInfo.firstName} ${profile.personalInfo.lastName}`,
-    `${profile.personalInfo.email} | ${profile.personalInfo.phone} | ${profile.personalInfo.location}`,
-    [profile.personalInfo.linkedin, profile.personalInfo.github].filter(Boolean).join(" | "),
-    "",
-    "PROFESSIONAL SUMMARY",
-    resume.improvedSummary,
-    "",
-    "SKILLS",
-    unique(skills).join(", "),
-    "",
-    "PROFESSIONAL EXPERIENCE",
-    ...resume.selectedExperience.flatMap((exp) => [
-      `${exp.position} | ${exp.company} | ${exp.location} | ${exp.startDate} - ${exp.endDate}`,
-      ...exp.description.map((bullet) => `- ${bullet}`),
-      "",
-    ]),
-    "PROJECTS",
-    ...resume.selectedProjects.flatMap((project) => [
-      `${project.name} | ${project.technologies.join(", ")}`,
-      ...project.highlights.map((highlight) => `- ${highlight}`),
-      "",
-    ]),
-    "EDUCATION",
-    ...profile.education.map((edu) => `${edu.degree} in ${edu.field} | ${edu.institution} | ${edu.endDate}`),
-    certificationLines.length ? "" : undefined,
-    certificationLines.length ? "CERTIFICATIONS" : undefined,
-    ...certificationLines,
-    achievementLines.length ? "" : undefined,
-    achievementLines.length ? "HONORS & ACHIEVEMENTS" : undefined,
-    ...achievementLines,
-  ].filter((line) => line !== undefined).join("\n").trim()
+// For job analysis: which real profile entries speak to this posting, most
+// relevant first, and which of the job's keywords each one covers. Entries that
+// match nothing are left out rather than padded in.
+export function rankExperienceForJob(profile: ProfileData, jobDescription: string) {
+  const keywords = extractKeywords(jobDescription)
+  return profile.experience
+    .map((experience) => {
+      const text = `${experience.position} ${experience.company} ${experience.description.join(" ")}`
+      return { experience, matchedKeywords: keywords.filter((keyword) => includesTerm(text, keyword)) }
+    })
+    .filter((entry) => entry.matchedKeywords.length > 0)
+    .sort((a, b) => b.matchedKeywords.length - a.matchedKeywords.length)
 }
 
 export function generateResumeFromJob({
@@ -613,38 +569,21 @@ export function generateResumeFromJob({
   const isDenseOnePage = template === "original-cv" || template === "university-law"
   const hasSupplementalSections = profile.certifications.length > 0 || profile.achievements.length > 0
   const tailoredSkills = buildTailoredSkills(profile, jobDescription, keywordsAdded, isDenseOnePage ? 36 : hasSupplementalSections ? 24 : 30)
-  const experienceCount = isDenseOnePage ? Math.min(profile.experience.length, 4) : 3
-  const projectCount = isDenseOnePage ? Math.min(profile.projects.length, 4) : hasSupplementalSections ? 3 : Math.min(profile.projects.length, 4)
-  const bulletCount = isDenseOnePage ? 8 : hasSupplementalSections ? 5 : 6
-  const projectBulletCount = isDenseOnePage ? 5 : 5
-  const softwareRoleBoost = (text: string) =>
-    includesTerm(jobDescription, "software") || includesTerm(jobDescription, "website") || includesTerm(jobDescription, "LLM")
-      ? scoreText(text, ["JavaScript", "TypeScript", "Python", "AI", "LLMs", "Automation", "Dashboard", "API", "OpenAI", "Next.js"]) * 2
-      : 0
+  const experienceCount = Math.min(profile.experience.length, 4)
+  const bulletCount = 6
 
   const selectedExperience = sortExperienceByRecency(profile.experience
     .map((exp) => ({
       ...exp,
-      description: tailorBullets(exp.description, keywordsAdded, jobDescription, bulletCount),
-      score:
-        scoreText(`${exp.position} ${exp.company} ${exp.description.join(" ")}`, keywordsAdded) +
-        softwareRoleBoost(`${exp.position} ${exp.company} ${exp.description.join(" ")}`),
+      description: tailorBullets(exp.description, bulletCount),
+      score: scoreText(`${exp.position} ${exp.company} ${exp.description.join(" ")}`, keywordsAdded),
     }))
     .sort((a, b) => b.score - a.score)
     .slice(0, experienceCount)
     .map(({ score: _score, ...exp }) => exp))
 
-  const selectedProjects = profile.projects
-    .map((project) => ({
-      ...project,
-      highlights: tailorProjectHighlights(project, keywordsAdded, jobDescription, projectBulletCount),
-      score:
-        scoreText(`${project.name} ${project.description} ${project.technologies.join(" ")} ${project.highlights.join(" ")}`, keywordsAdded) +
-        softwareRoleBoost(`${project.name} ${project.description} ${project.technologies.join(" ")} ${project.highlights.join(" ")}`),
-    }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, projectCount)
-    .map(({ score: _score, ...project }) => project)
+  // Projects are not part of the Loyola format.
+  const selectedProjects: ProfileData["projects"] = []
 
   const atsScore = Math.min(98, 72 + matchedKeywords.length * 3 + Math.min(missingKeywords.length, 5) * 2)
   const jobTitle = inferJobTitle(jobDescription)
@@ -669,16 +608,15 @@ export function generateResumeFromJob({
     missingKeywords,
     keywordsAdded,
     changeHighlights: [
-      `Rewrote the professional summary for ${jobTitle}`,
+      `Formatted in the Loyola Law resume layout for ${jobTitle}`,
       `Prioritized ${selectedExperience.length} experience section${selectedExperience.length === 1 ? "" : "s"} most relevant to the job`,
-      `Optimized ${selectedProjects.length} project${selectedProjects.length === 1 ? "" : "s"} with job-aligned descriptions and bullets`,
       `Added or emphasized ${keywordsAdded.slice(0, 5).join(", ") || "job-specific"} keywords`,
     ],
     atsScore,
     strengths: [
       "Resume content is tailored to the job description",
-      "Relevant profile experience and projects are prioritized",
-      "Project bullets are rewritten from existing project evidence",
+      "Relevant experience is prioritized",
+      "Bar admission, work authorization, and education follow the Loyola Law format",
       "ATS keywords from the posting are included in the resume",
       "Bullet points use action-oriented language",
     ],

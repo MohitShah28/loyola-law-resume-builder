@@ -3,7 +3,7 @@ REM One-time setup for Windows.
 REM Usage: double-click this file, or run "setup.bat" in Command Prompt.
 setlocal enabledelayedexpansion
 
-echo === Resume AI setup (Windows) ===
+echo === Loyola Law Resume Builder setup (Windows) ===
 
 REM 1. Check Node.js
 where node >nul 2>nul
@@ -26,7 +26,7 @@ if %NODE_MAJOR% LSS 20 (
 echo Node.js OK:
 node -v
 
-REM 2. Ensure pnpm (via corepack, ships with Node — no admin rights needed)
+REM 2. Ensure pnpm (via corepack, ships with Node - no admin rights needed)
 set PNPM=pnpm
 where pnpm >nul 2>nul
 if errorlevel 1 (
@@ -35,7 +35,7 @@ if errorlevel 1 (
     echo Installing pnpm...
     call npm install -g pnpm
   ) else (
-    echo pnpm not found — using it through corepack ^(no install needed^).
+    echo pnpm not found - using it through corepack ^(no install needed^).
     set PNPM=corepack pnpm
   )
 )
@@ -54,14 +54,14 @@ if errorlevel 1 (
 REM 4. Create .env.local from template if missing
 if not exist .env.local (
   copy .env.example .env.local >nul
-  echo Created .env.local — add your GROQ_API_KEY ^(free at https://console.groq.com^).
+  echo Created .env.local - add a free GEMINI_API_KEY ^(https://aistudio.google.com/apikey^). See SETUP.md for backup keys.
 ) else (
-  echo .env.local already exists — leaving it as is.
+  echo .env.local already exists - leaving it as is.
 )
 
 echo.
 echo === Setup complete! ===
-echo 1. Edit .env.local and paste your API key ^(optional — app works without it^).
-echo 2. Start the app:   pnpm dev
+echo 1. Edit .env.local and paste your API key ^(optional - app works without it^).
+echo 2. Start the app:   %PNPM% dev
 echo 3. Open:            http://localhost:3000
 pause
