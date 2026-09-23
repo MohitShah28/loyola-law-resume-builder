@@ -111,6 +111,14 @@ describe("scoreResumeAgainstJob keyword extraction", () => {
     expect(all).toContain("Westlaw")
   })
 
+  it("drops month names and sentence-opening verbs from a posting full of dates", () => {
+    const all = keywordsFor(
+      "Deputy Public Defender. Represent indigent clients in felony matters. Requires California Bar admission or registration for the July 2027 exam. Start date August 2027."
+    )
+    for (const noise of ["July", "August", "Represent"]) expect(all).not.toContain(noise)
+    expect(all.join(" ")).toContain("California Bar")
+  })
+
   it("keeps a heading term that the posting repeats as a requirement", () => {
     const job = "HIPAA Compliance Counsel, Acme Health\nAdvise on HIPAA Compliance and vendor contracts. HIPAA Compliance experience required."
     expect(keywordsFor(job).join(" ")).not.toContain("Acme Health")

@@ -310,7 +310,10 @@ const KEYWORD_STOPWORDS = new Set([
   // Support") are deliberately not listed, because trimKeyword would cut them.
   "draft", "drafts", "conduct", "conducts", "attend", "attends", "ensure", "ensures",
   "maintain", "maintains", "coordinate", "coordinates", "serve", "serves", "handle",
-  "handles", "plus",
+  "handles", "plus", "represent", "represents",
+  // Months: postings are full of dates ("July 2027 exam", "starts in August").
+  "january", "february", "march", "april", "may", "june", "july", "august",
+  "september", "october", "november", "december", "fall", "spring", "summer", "winter",
 ])
 
 // "The Tax Associate" -> "Tax Associate": boilerplate words at either end of a
