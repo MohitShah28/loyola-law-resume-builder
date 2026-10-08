@@ -816,6 +816,13 @@ async function saveGenerationRunLog({
     },
   }
 
+  // Hosted deployments (Vercel) keep no files: student resume text must not be
+  // written to the server. Local runs still log unless turned off explicitly.
+  const fileLogsEnabled = process.env.SAVE_GENERATION_LOGS
+    ? process.env.SAVE_GENERATION_LOGS === "true"
+    : !process.env.VERCEL
+  if (!fileLogsEnabled) return
+
   try {
     await appendJsonLine(path.join(process.cwd(), "logs", "resume-token-usage.jsonl"), tokenLogEntry)
     await appendJsonLine(path.join(process.cwd(), "logs", "resume-generation-runs.jsonl"), runLogEntry)
