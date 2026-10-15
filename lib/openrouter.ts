@@ -7,10 +7,16 @@
 // The defaults are free models, because a free-tier key can only run those
 // (50 requests a day on a key with no credits). A key with credits can point
 // OPENROUTER_MODEL at paid models instead, as a comma-separated list.
+// Probed against a free key on 2026-10-15. OpenRouter accepts at most three
+// models per request and moves to the next itself when one is busy, so this
+// leads with the strongest and ends with a catch-all:
+//   nemotron-3-ultra-550b -> highest quality, but often "temporarily overloaded"
+//   nemotron-3.5-super-vl -> fast (under a second), JSON-capable, 1M context
+//   openrouter/free       -> routes to whichever free model is up right now
+// Removed: qwen/qwen3.8-27b:free, which now returns 404 "unavailable for free".
 export const DEFAULT_OPENROUTER_MODELS = [
   "nvidia/nemotron-3-ultra-550b-a55b:free",
-  "qwen/qwen3.8-27b:free",
-  // Routes to whichever free model is available right now.
+  "nvidia/nemotron-3.5-super-vl:free",
   "openrouter/free",
 ]
 
