@@ -354,8 +354,22 @@ export async function POST(request: Request) {
     throw lastError instanceof Error ? lastError : new Error("Resume import failed")
   } catch (error) {
     console.error("Resume import failed", error)
+    const raw = error instanceof Error ? error.message : ""
+    // pdf-parse and mammoth throw library wording ("bad XRef entry") that means
+    // nothing to a student; a damaged or image-only file is their problem to
+    // fix, not a server fault.
+    const unreadable = /xref|invalid pdf|password|encrypted|corrupt|not a zip|end of central directory/i.test(raw)
+    if (unreadable || /upload a resume file/i.test(raw)) {
+      return NextResponse.json(
+        {
+          error:
+            "Could not read that file. Export your resume again as a text-based PDF or DOCX (a scanned or password-protected file will not work), or fill the profile in by hand.",
+        },
+        { status: 400 }
+      )
+    }
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Resume import failed" },
+      { error: raw || "Resume import failed" },
       { status: 500 }
     )
   }

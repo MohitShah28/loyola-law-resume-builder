@@ -24,6 +24,10 @@ const GROQ_MODELS = [
 ] as const
 
 const DEFAULT_CLAUDE_MODEL = "claude-opus-5"
+// Vercel kills a function at its default duration, which is shorter than a slow
+// generation; the cover letter route already runs at 120s on this deployment.
+export const maxDuration = 120
+
 const MAX_OUTPUT_TOKENS = 8000
 // Groq free tier counts prompt + max_tokens against a 12k tokens-per-minute cap,
 // so the Groq request must reserve far less output budget than Gemini.
