@@ -1310,6 +1310,23 @@ function FilesSection({ profile, setProfile }: { profile: Profile; setProfile: S
       const nextProfile = mergeProfileFromResume(profile, importedProfile)
       const counts = getImportCounts(importedProfile)
 
+      // An import that found nothing must not look like a success; the merge
+      // keeps the existing profile, so nothing has actually changed.
+      const importedAnything =
+        counts.experience > 0 ||
+        counts.projects > 0 ||
+        counts.skills > 0 ||
+        Object.values(importedProfile.personalInfo).some((value) => typeof value === "string" && value.trim()) ||
+        importedProfile.education.length > 0
+
+      if (!importedAnything) {
+        toast.error(
+          "Nothing could be read from that file, so your profile is unchanged. Try a text-based PDF or DOCX, or fill the sections in by hand.",
+          { duration: 8000 }
+        )
+        return
+      }
+
       setProfile(nextProfile)
       saveMasterProfile(nextProfile, "resume_import")
       toast.success(

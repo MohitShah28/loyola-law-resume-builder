@@ -278,6 +278,19 @@ function getTokenUsage(
   }
 }
 
+// A model can return well-formed JSON with nothing in it. That is a failed
+// import, not a result: treat it like a provider error so the next provider
+// gets a turn, rather than handing the student an empty profile.
+function hasUsefulProfileData(profile: ProfileData) {
+  const info = profile.personalInfo
+  return Boolean(
+    (info.firstName || info.lastName || info.email || info.phone || "").trim() ||
+      profile.experience.length ||
+      profile.education.length ||
+      profile.certifications.length
+  )
+}
+
 export async function POST(request: Request) {
   try {
     const apiKeys = getGroqApiKeys()
@@ -321,6 +334,7 @@ export async function POST(request: Request) {
 
         const content = completion.choices[0]?.message?.content || "{}"
         const profile = normalizeImportedProfile(JSON.parse(content) as Partial<ProfileData>)
+        if (!hasUsefulProfileData(profile)) throw new Error("The model returned an empty profile.")
 
         return NextResponse.json({
           profile,
@@ -343,6 +357,7 @@ export async function POST(request: Request) {
           temperature: 0,
         })
         const profile = normalizeImportedProfile(parseJsonWithRepair<ProfileData>(result.text))
+        if (!hasUsefulProfileData(profile)) throw new Error("The model returned an empty profile.")
         const tokenUsage: ResumeTokenUsage = { provider: "openrouter", model: result.model, apiKeyIndex: 1, ...result.usage }
         return NextResponse.json({ profile, tokenUsage })
       } catch (error) {
@@ -358,6 +373,15 @@ export async function POST(request: Request) {
     // pdf-parse and mammoth throw library wording ("bad XRef entry") that means
     // nothing to a student; a damaged or image-only file is their problem to
     // fix, not a server fault.
+    if (/empty profile/i.test(raw)) {
+      return NextResponse.json(
+        {
+          error:
+            "The AI could not pull any details out of that resume. Try a text-based PDF or DOCX (not a scan or screenshot), or fill the profile in by hand.",
+        },
+        { status: 422 }
+      )
+    }
     const unreadable = /xref|invalid pdf|password|encrypted|corrupt|not a zip|end of central directory/i.test(raw)
     if (unreadable || /upload a resume file/i.test(raw)) {
       return NextResponse.json(
