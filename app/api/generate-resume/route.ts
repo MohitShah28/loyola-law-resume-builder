@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk"
 import Groq from "groq-sdk"
 import { parseJsonWithRepair } from "@/lib/json-repair"
+import { RecruiterAudit, buildRewriteDirectives, parseRecruiterAudit } from "@/lib/resume-algorithm"
 import { NextResponse } from "next/server"
 import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises"
 import path from "node:path"
@@ -156,7 +157,7 @@ async function getGoogleJobContext(payload: GenerateResumePayload, fallback: Gen
   }
 }
 
-function buildPrompt(payload: GenerateResumePayload, fallback: GeneratedResume, googleContext: string) {
+function buildPrompt(payload: GenerateResumePayload, fallback: GeneratedResume, googleContext: string, audit?: RecruiterAudit | null) {
   return `
 Create a content-rich, one-page ATS resume tailored to the job. The candidate is typically a law student or recent law graduate applying to legal positions (judicial clerkships and externships, law firm associate/summer associate roles, public interest and government positions).
 
@@ -257,6 +258,7 @@ ${googleContext || "No Google enrichment configured or available."}
 
 Job description:
 ${truncateText(payload.jobDescription)}
+${buildRewriteDirectives(audit || null)}
 `
 }
 
@@ -540,14 +542,16 @@ async function requestClaudeResume({
   payload,
   fallback,
   googleContext,
+  audit,
 }: {
   apiKey: string
   model: string
   payload: GenerateResumePayload
   fallback: GeneratedResume
   googleContext: string
+  audit?: RecruiterAudit | null
 }) {
-  const userPrompt = buildPrompt(payload, fallback, googleContext)
+  const userPrompt = buildPrompt(payload, fallback, googleContext, audit)
   const anthropic = new Anthropic({ apiKey })
 
   const response = await anthropic.messages.create({
@@ -636,6 +640,7 @@ async function requestGeminiResume({
   fallback,
   googleContext,
   retryOnRateLimit,
+  audit,
 }: {
   apiKey: string
   model: string
@@ -643,8 +648,9 @@ async function requestGeminiResume({
   fallback: GeneratedResume
   googleContext: string
   retryOnRateLimit: boolean
+  audit?: RecruiterAudit | null
 }) {
-  const userPrompt = buildPrompt(payload, fallback, googleContext)
+  const userPrompt = buildPrompt(payload, fallback, googleContext, audit)
   const url = new URL(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`)
   url.searchParams.set("key", apiKey)
 
@@ -712,13 +718,15 @@ async function requestOpenRouterResume({
   payload,
   fallback,
   googleContext,
+  audit,
 }: {
   apiKey: string
   payload: GenerateResumePayload
   fallback: GeneratedResume
   googleContext: string
+  audit?: RecruiterAudit | null
 }) {
-  const userPrompt = buildPrompt(payload, fallback, googleContext)
+  const userPrompt = buildPrompt(payload, fallback, googleContext, audit)
   const result = await requestOpenRouterText({
     apiKey,
     system: SYSTEM_PROMPT,
@@ -850,6 +858,42 @@ export async function POST(request: Request) {
 
   const fallback = buildLocalFallback(payload)
 
+  // Stage 1 ran in /api/recruiter-audit and its result rides along with the
+  // request; validated here because it shapes the prompt. Null is fine: the
+  // rewrite then runs as it always did.
+  const audit = parseRecruiterAudit(payload.recruiterAudit)
+
+  // Stage 2 — rewrite, steered by the audit.
+  const response = await runProviderCascade(payload, fallback, audit)
+
+  // Stage 3 — ATS and hiring-manager scan of the finished resume. Skipped when
+  // the earlier stages have used most of the function's time budget, so a slow
+  // provider costs the extra reading rather than the resume itself.
+  let body: Record<string, unknown>
+  try {
+    body = (await response.clone().json()) as Record<string, unknown>
+  } catch {
+    return response
+  }
+
+  const resume = body.resume as GeneratedResume | undefined
+  if (!resume) return response
+
+  if (!audit) return response
+
+  return NextResponse.json(
+    { ...body, resume: { ...resume, recruiterAudit: audit } },
+    { status: response.status }
+  )
+}
+
+// Stage 2: the provider cascade that rewrites the resume, now steered by the
+// stage 1 audit.
+async function runProviderCascade(
+  payload: GenerateResumePayload,
+  fallback: GeneratedResume,
+  audit: RecruiterAudit | null
+) {
   const apiKeys = getGroqApiKeys()
   const groqEnabled = process.env.GROQ_API_ENABLED !== "false"
   const geminiApiKey = getGeminiApiKey()
@@ -966,7 +1010,7 @@ export async function POST(request: Request) {
 
       for (const groqModel of GROQ_MODELS) {
         try {
-          const userPrompt = buildPrompt(payload, fallback, googleContext)
+          const userPrompt = buildPrompt(payload, fallback, googleContext, audit)
           const completion = await groq.chat.completions.create({
             model: groqModel,
             messages: [

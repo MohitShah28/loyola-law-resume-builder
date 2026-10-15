@@ -178,6 +178,22 @@ export function saveGeneratedResume(
   )
 }
 
+// Stage 3 finishes after the resume is already saved, so write the scan onto
+// both the open resume and its history entry.
+export function attachAtsScanToLatestResume(scan: GeneratedResume["atsScan"]) {
+  const latest = readJson<GeneratedResume>(LATEST_GENERATED_RESUME_KEY)
+  if (!latest) return null
+  const updated = { ...latest, atsScan: scan }
+  window.localStorage.setItem(LATEST_GENERATED_RESUME_KEY, JSON.stringify(updated))
+
+  const stored = readJson<StoredGeneratedResume[]>(GENERATED_RESUMES_KEY) || []
+  if (stored.length && stored[0].resume?.generatedAt === latest.generatedAt) {
+    stored[0] = { ...stored[0], resume: updated }
+    window.localStorage.setItem(GENERATED_RESUMES_KEY, JSON.stringify(stored))
+  }
+  return updated
+}
+
 export function loadGeneratedResumes(): StoredGeneratedResume[] {
   syncKnowledgeBaseVersion()
   return readJson<StoredGeneratedResume[]>(GENERATED_RESUMES_KEY) || []

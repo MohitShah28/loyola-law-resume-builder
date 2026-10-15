@@ -1,3 +1,4 @@
+import type { AtsScan, RecruiterAudit } from "@/lib/resume-algorithm"
 import { mockProfile } from "@/lib/data"
 import { addNotification } from "@/lib/notifications"
 import { buildResumeDocument, documentToText } from "@/lib/resume-document"
@@ -30,9 +31,17 @@ export type GeneratedResume = {
   suggestions: string[]
   modelUsed?: string
   generatedAt: string
+  // Stage 1 and stage 3 of the tailoring algorithm (see lib/resume-algorithm.ts).
+  // Optional: a generation still succeeds when a stage is unavailable.
+  recruiterAudit?: RecruiterAudit
+  atsScan?: AtsScan
 }
 
 export type GenerateResumePayload = {
+  // Stage 1 output, produced by /api/recruiter-audit and passed back in so the
+  // rewrite answers the audit. Typed loosely because it crosses the wire and is
+  // re-validated server-side.
+  recruiterAudit?: unknown
   personalInfo: ProfileData["personalInfo"]
   professionalSummary: string
   education: ProfileData["education"]
@@ -163,6 +172,47 @@ function notifyFallback(response: GenerateResumeApiResponse) {
     title: "Resume generated with fallback",
     message: response.warning,
   })
+}
+
+// Stage 1 of the tailoring algorithm. Returns null when the audit is
+// unavailable; generation then runs without it rather than failing.
+export async function requestRecruiterAudit(input: {
+  jobDescription: string
+  profileText: string
+  jobTitle?: string
+  company?: string
+}): Promise<RecruiterAudit | null> {
+  try {
+    const response = await fetch("/api/recruiter-audit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    })
+    if (!response.ok) return null
+    const data = (await response.json()) as { audit?: RecruiterAudit }
+    return data.audit || null
+  } catch {
+    return null
+  }
+}
+
+// Stage 3. Runs from the preview once the resume is on screen.
+export async function requestAtsScan(input: {
+  jobDescription: string
+  resumeText: string
+}): Promise<AtsScan | null> {
+  try {
+    const response = await fetch("/api/ats-scan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    })
+    if (!response.ok) return null
+    const data = (await response.json()) as { scan?: AtsScan }
+    return data.scan || null
+  } catch {
+    return null
+  }
 }
 
 export async function requestGeneratedResume(payload: GenerateResumePayload): Promise<GenerateResumeApiResponse> {

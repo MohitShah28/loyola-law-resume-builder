@@ -15,7 +15,9 @@ import {
   Plus,
   Copy,
   Mail,
-  Loader2
+  Loader2,
+  Target,
+  Eye,
 } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -25,7 +27,8 @@ import { AtsScoreCircle } from "@/components/ui/ats-score-circle"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { mockProfile } from "@/lib/data"
-import { GeneratedResume, atsScoreMessage, generateResumeFromJob } from "@/lib/resume-generator"
+import type { AtsScan } from "@/lib/resume-algorithm"
+import { GeneratedResume, atsScoreMessage, generateResumeFromJob, requestAtsScan } from "@/lib/resume-generator"
 import {
   buildResumeDocument,
   documentToDocxBody,
@@ -34,7 +37,12 @@ import {
   type LabeledRow,
   type ResumeDocument,
 } from "@/lib/resume-document"
-import { addSkillsToMasterProfile, loadGeneratedResumes, loadLatestGeneratedResume } from "@/lib/profile-storage"
+import {
+  addSkillsToMasterProfile,
+  attachAtsScanToLatestResume,
+  loadGeneratedResumes,
+  loadLatestGeneratedResume,
+} from "@/lib/profile-storage"
 import { cn } from "@/lib/utils"
 import { buildPrintHtml, openPrintWindow } from "@/lib/print-html"
 import { createDocxBlob, downloadBlob, sanitizeFilename } from "@/lib/docx"
@@ -396,6 +404,12 @@ export default function ResumePreviewPage() {
   const [isSampleResume, setIsSampleResume] = useState(true)
   const [selectedTemplateId, setSelectedTemplateId] = useState<TemplateId>(fallbackTemplateId)
 
+  // Stage 3 of the tailoring algorithm runs here, after the resume is on
+  // screen, because all three stages in one request overran the time limit.
+  const [atsScan, setAtsScan] = useState<AtsScan | null>(null)
+  const [isScanning, setIsScanning] = useState(false)
+  const [scanJobDescription, setScanJobDescription] = useState("")
+
   useEffect(() => {
     const savedResume = loadLatestGeneratedResume()
     if (!savedResume) return
@@ -403,7 +417,35 @@ export default function ResumePreviewPage() {
     const normalizedResume = normalizeGeneratedResume(savedResume)
     setGeneratedResume(normalizedResume)
     setIsSampleResume(false)
+    setAtsScan(normalizedResume.atsScan || null)
+
+    const stored = loadGeneratedResumes()
+    const entry = stored.find((item) => item.resume?.generatedAt === normalizedResume.generatedAt) || stored[0]
+    setScanJobDescription(entry?.jobDescription || "")
   }, [])
+
+  // Runs once per resume: a scan already saved is reused rather than re-paid for.
+  useEffect(() => {
+    if (isSampleResume || atsScan || isScanning || !scanJobDescription) return
+    const resumeText = documentToText(buildResumeDocument(generatedResume))
+    if (!resumeText.trim()) return
+
+    let cancelled = false
+    setIsScanning(true)
+    requestAtsScan({ jobDescription: scanJobDescription, resumeText })
+      .then((scan) => {
+        if (cancelled || !scan) return
+        setAtsScan(scan)
+        attachAtsScanToLatestResume(scan)
+      })
+      .finally(() => {
+        if (!cancelled) setIsScanning(false)
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSampleResume, scanJobDescription, generatedResume.generatedAt])
 
   const profile = generatedResume.profile
   const resumeTemplate = templateStyles[selectedTemplateId]
@@ -724,6 +766,124 @@ export default function ResumePreviewPage() {
                 </p>
               </div>
             </AnimatedCard>
+
+            {/* Stage 1 — recruiter audit */}
+            {generatedResume.recruiterAudit && (
+              <AnimatedCard delay={0.15}>
+                <h3 className="font-semibold text-foreground flex items-center gap-2 mb-1">
+                  <Target className="h-5 w-5 text-[#4f46e5]" />
+                  Recruiter verdict
+                </h3>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Stage 1: a recruiter for this posting scored your profile before the rewrite. This is a judgement
+                  call about your candidacy, not the keyword count above — the two differ on purpose.
+                </p>
+                <div className="flex items-baseline gap-2 mb-2">
+                  <span className="text-3xl font-bold text-foreground">{generatedResume.recruiterAudit.matchScore}</span>
+                  <span className="text-sm text-muted-foreground">/ 100 match</span>
+                </div>
+                {generatedResume.recruiterAudit.verdict && (
+                  <p className="text-sm text-foreground mb-3">{generatedResume.recruiterAudit.verdict}</p>
+                )}
+
+                {generatedResume.recruiterAudit.missingKeywords.length > 0 && (
+                  <div className="mb-3">
+                    <p className="text-xs font-medium text-foreground mb-2">Top missing keywords</p>
+                    <div className="flex flex-wrap gap-2">
+                      {generatedResume.recruiterAudit.missingKeywords.map((keyword) => (
+                        <Badge key={keyword} className="bg-[#f59e0b]/10 text-[#f59e0b]">{keyword}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {generatedResume.recruiterAudit.redFlags.length > 0 && (
+                  <div className="space-y-3">
+                    <p className="text-xs font-medium text-foreground">
+                      Red flags a hiring manager spots in 10 seconds
+                    </p>
+                    {generatedResume.recruiterAudit.redFlags.map((flag, index) => (
+                      <div key={`${flag.flag}-${index}`} className="rounded-lg border border-border p-3">
+                        <p className="text-sm font-medium text-foreground flex items-start gap-2">
+                          <AlertCircle className="h-4 w-4 text-[#f59e0b] mt-0.5 shrink-0" />
+                          {flag.flag}
+                        </p>
+                        {flag.why && <p className="text-xs text-muted-foreground mt-1">{flag.why}</p>}
+                        {flag.fix && (
+                          <p className="text-xs text-foreground mt-2">
+                            <span className="font-medium">Fix:</span> {flag.fix}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </AnimatedCard>
+            )}
+
+            {/* Stage 3 — ATS and hiring-manager scan */}
+            {!isSampleResume && (isScanning || atsScan) && (
+              <AnimatedCard delay={0.18}>
+                <h3 className="font-semibold text-foreground flex items-center gap-2 mb-1">
+                  <Eye className="h-5 w-5 text-[#4f46e5]" />
+                  What gets skipped
+                </h3>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Stage 3: an ATS and a manager reading 200 resumes say which parts get passed over, and how to rewrite them.
+                </p>
+
+                {isScanning && !atsScan && (
+                  <p className="text-sm text-muted-foreground flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Scanning your resume...
+                  </p>
+                )}
+
+                {atsScan && (
+                  <div className="space-y-3">
+                    {atsScan.skippedSections.map((section, index) => (
+                      <div key={`${section.section}-${index}`} className="rounded-lg border border-border p-3">
+                        <p className="text-sm font-medium text-foreground">{section.section}</p>
+                        {section.why && <p className="text-xs text-muted-foreground mt-1">{section.why}</p>}
+                        {section.rewrite && (
+                          <div className="mt-2">
+                            <p className="text-xs font-medium text-foreground mb-1">Suggested rewrite</p>
+                            <pre className="text-xs text-foreground whitespace-pre-wrap font-sans bg-muted/50 rounded p-2">
+                              {section.rewrite}
+                            </pre>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="gap-2 mt-2 h-7 text-xs"
+                              onClick={() => {
+                                navigator.clipboard.writeText(section.rewrite)
+                                toast.success("Rewrite copied. Use Edit Resume to paste it in.")
+                              }}
+                            >
+                              <Copy className="h-3 w-3" />
+                              Copy rewrite
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {atsScan.stopTheScroll.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-foreground mb-1">What now stops the scroll</p>
+                        <ul className="space-y-1">
+                          {atsScan.stopTheScroll.map((note, index) => (
+                            <li key={index} className="text-xs text-muted-foreground flex items-start gap-2">
+                              <CheckCircle2 className="h-3 w-3 text-[#10b981] mt-0.5 shrink-0" />
+                              {note}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </AnimatedCard>
+            )}
 
             {/* Matched Keywords */}
             <AnimatedCard delay={0.2}>

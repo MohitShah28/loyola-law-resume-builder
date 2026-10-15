@@ -15,7 +15,13 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
-import { profileToGeneratePayload, requestGeneratedResume } from "@/lib/resume-generator"
+import {
+  formatResumeText,
+  generateResumeFromJob,
+  profileToGeneratePayload,
+  requestGeneratedResume,
+  requestRecruiterAudit,
+} from "@/lib/resume-generator"
 import { clearLatestGeneratedResume, createProfileWorkingCopy, saveGeneratedResume } from "@/lib/profile-storage"
 import { toast } from "sonner"
 
@@ -91,14 +97,15 @@ const templates = [
   }
 ]
 
+// The three stages of the tailoring algorithm, in the order they run.
 const generationSteps = [
   { id: 1, label: "Reading profile data" },
-  { id: 2, label: "Analyzing job description" },
-  { id: 3, label: "Matching keywords" },
-  { id: 4, label: "Selecting relevant experience" },
-  { id: 5, label: "Writing bullet points" },
-  { id: 6, label: "Formatting resume" },
-  { id: 7, label: "Final ATS check" }
+  { id: 2, label: "Stage 1 — recruiter audit: scoring you against this posting" },
+  { id: 3, label: "Stage 1 — finding missing keywords and red flags" },
+  { id: 4, label: "Stage 2 — rewriting experience to answer the audit" },
+  { id: 5, label: "Stage 2 — applying the XYZ shape to each bullet" },
+  { id: 6, label: "Formatting in the Loyola layout" },
+  { id: 7, label: "Stage 3 runs next, on the preview" },
 ]
 
 export default function ResumeBuilderPage() {
@@ -120,21 +127,43 @@ export default function ResumeBuilderPage() {
     const profile = createProfileWorkingCopy()
 
     try {
-      for (let step = 1; step <= 3; step += 1) {
-        setCurrentStep(step)
-        await delay(350)
-      }
+      setCurrentStep(1)
+      await delay(300)
 
-      const result = await requestGeneratedResume(
-        profileToGeneratePayload({
+      // Stage 1 — the recruiter audit, which stage 2 then rewrites against.
+      setCurrentStep(2)
+      const basePayload = profileToGeneratePayload({
+        profile,
+        jobDescription,
+        template: selectedTemplate,
+        tone: "professional",
+        experienceLevel: "mid",
+        length: "short",
+      })
+      const audit = await requestRecruiterAudit({
+        jobDescription,
+        profileText: formatResumeText(generateResumeFromJob({
           profile,
           jobDescription,
           template: selectedTemplate,
           tone: "professional",
           experienceLevel: "mid",
           length: "short",
-        })
-      )
+        })),
+        jobTitle: basePayload.targetRole,
+      })
+
+      if (audit) {
+        setCurrentStep(3)
+        toast.success(
+          `Recruiter audit: ${audit.matchScore}/100. ${audit.redFlags.length} red flag${audit.redFlags.length === 1 ? "" : "s"} to fix.`,
+          { duration: 6000 }
+        )
+      }
+
+      // Stage 2 — the rewrite, steered by the audit.
+      setCurrentStep(4)
+      const result = await requestGeneratedResume({ ...basePayload, recruiterAudit: audit })
 
       saveGeneratedResume(result.resume, {
         jobDescription,
@@ -148,7 +177,7 @@ export default function ResumeBuilderPage() {
         )
       }
 
-      for (let step = 4; step <= generationSteps.length; step += 1) {
+      for (let step = 5; step <= generationSteps.length; step += 1) {
         setCurrentStep(step)
         await delay(350)
       }

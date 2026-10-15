@@ -71,6 +71,39 @@ Master Profile (localStorage)      Job Description (pasted)
 - **Cover letters** (`/cover-letter`): paste a job description and get a one-page letter grounded in a resume tailored to that job, with the same letterhead as the resume. A "What this job asks for" panel shows which requirements the letter names, which your profile covers but the letter left out, and which your profile lacks. Export to PDF/DOCX or copy.
 - Generation runs and token usage are appended to `logs/*.jsonl` for debugging (gitignored).
 
+## The three-stage tailoring algorithm
+
+Pasting a job description runs three stages, each a separate request so none of
+them runs out of time:
+
+**Stage 1 — Recruiter audit** (`/api/recruiter-audit`). A senior recruiter for
+that exact posting scores the profile out of 100, names up to five missing
+keywords, and lists the three red flags a hiring manager would spot in a
+ten-second skim, each with why it costs the interview and how to fix it.
+
+**Stage 2 — Rewrite** (`/api/generate-resume`). The resume is rewritten against
+the audit: the flagged weaknesses are addressed, the posting's own vocabulary is
+used wherever the student's real work supports it, and each bullet takes the XYZ
+shape — accomplished X, as measured by Y, by doing Z.
+
+**Stage 3 — ATS scan** (`/api/ats-scan`). An ATS parser and a manager reading
+200 resumes in one sitting name the sections that get skipped, say why, and
+supply a rewrite for each. It runs from the preview once the resume is on
+screen, and the result is saved with the resume.
+
+### The rule that keeps it honest
+
+"As measured by Y" is where resume tools start inventing numbers. Here Y may use
+a figure **only if that figure is already in the student's profile**; otherwise
+the bullet measures by real scope — the forum, the governing law, the document
+type, the stage of the matter. A missing keyword is reported to the student as a
+gap rather than written into the resume, and a red flag is never fixed by
+inventing experience. The prompts carry these rules and
+`tests/resume-algorithm.test.ts` asserts they are still there.
+
+Each stage degrades independently: if the audit is unavailable the rewrite still
+runs, and if the scan fails the resume is unaffected.
+
 ## The Master Profile
 
 The profile at `/profile` is the single knowledge base every resume is generated from. It follows the LLS legal-resume format rather than a generic tech-resume shape:
