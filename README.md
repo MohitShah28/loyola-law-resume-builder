@@ -2,6 +2,10 @@
 
 AI-powered resume tailoring app for **Loyola Law School students**. Paste a job description — judicial clerkship, firm associate, summer associate, government, or public interest — and it rewrites your master profile into a job-specific, ATS-friendly, one-page legal resume — with keyword matching, an ATS score, live preview, and PDF/DOCX export.
 
+**Live app:** <https://loyola-law-resume-builder.vercel.app> — every push to `main`
+redeploys it (see [DEPLOY.md](DEPLOY.md)). The link spends the deployment's shared
+API quota, so share it with testers rather than posting it publicly.
+
 Your data never leaves your browser: everything is stored in `localStorage`, with no accounts and no database.
 
 Built with **Next.js 16 (App Router) + React 19 + TypeScript + Tailwind CSS 4**, using a five-tier LLM chain — **Claude → Gemini → OpenRouter → Groq → local rule-based generator**.

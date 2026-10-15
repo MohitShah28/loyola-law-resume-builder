@@ -34,13 +34,15 @@ export async function POST(request: Request) {
 
   const executablePath = findBrowser()
   if (!executablePath) {
-    // Hosted deployments have no browser binary, and the visitor cannot install
-    // one; the client falls back to the print dialog either way.
+    // Hosted deployments have no browser binary and the visitor cannot install
+    // one, so lead with the instruction that works for everyone; the client
+    // falls back to the print dialog either way. Deliberately not keyed off
+    // process.env.VERCEL, which is only present when a deployment exposes
+    // system environment variables.
     return NextResponse.json(
       {
-        error: process.env.VERCEL
-          ? "Server-side PDF rendering is unavailable on the hosted version. Use the print dialog and choose Save as PDF."
-          : "No local Chrome/Edge found. Set CHROME_PATH in .env.local, or use the print dialog and choose Save as PDF.",
+        error:
+          "Server-side PDF rendering is unavailable here. Use the print dialog and choose Save as PDF. (Running the app locally? Install Chrome or set CHROME_PATH in .env.local.)",
       },
       { status: 501 }
     )
